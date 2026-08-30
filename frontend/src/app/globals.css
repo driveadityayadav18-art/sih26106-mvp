@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-cream: #FDFBD4;
+  --color-cinnamon: #D47E30;
+  --color-nutmeg: #8D5A2B;
+  --color-spiced-brown: #825E34;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  :root {
+    /* Strict Neutral Dark Palette */
+    --background: #09090B;
+    --card: #141416;
+    --card-border: #27272A;
+    --foreground: #F4F4F5;
+    --muted-foreground: #A1A1AA;
+    
+    /* Core Swatches */
+    --cream: #FDFBD4;
+    --cinnamon: #D47E30;
+    --nutmeg: #8D5A2B;
+    --spiced-brown: #825E34;
+
+    --border: #27272A;
+    --input: #27272A;
+    --ring: #D47E30;
+  }
+
+  * {
+    border-color: var(--card-border);
+  }
+
+  body {
+    background-color: #09090B;
+    color: #F4F4F5;
+    font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  }
+}
+
+@layer components {
+  /* Default: Clean crisp Cinnamon-Nutmeg gradient action button */
+  .gradient-button {
+    position: relative;
+    background: linear-gradient(135deg, #8D5A2B 0%, #D47E30 50%, #825E34 100%);
+    background-size: 200% 200%;
+    color: #F4F4F5;
+    border: 1px solid #D47E30;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s ease-in-out;
+  }
+
+  .gradient-button:hover {
+    background-position: 100% 100%;
+    border-color: #FDFBD4;
+    box-shadow: 0 2px 8px rgba(212, 126, 48, 0.25);
+  }
+
+  /* Variant: Clean neutral slate card button */
+  .gradient-button-variant {
+    position: relative;
+    background-color: #141416;
+    color: #F4F4F5;
+    border: 1px solid #27272A;
+    transition: all 0.2s ease-in-out;
+  }
+
+  .gradient-button-variant:hover {
+    background-color: #1E1E22;
+    border-color: #825E34;
+    color: #F4F4F5;
+  }
+}

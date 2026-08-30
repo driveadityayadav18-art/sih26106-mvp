@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+*/node_modules/
+.pnp
+.pnp.*
+
+# Environment variables & secrets
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+
+# Next.js build & cache
+.next/
+*/.next/
+out/
+*/out/
+build/
+*/build/
+dist/
+*/dist/
+
+# TypeScript & ESLint cache
+*.tsbuildinfo
+*.eslintcache
+
+# Python
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & logs
+coverage/
+*/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Vercel
+.vercel/
+*/.vercel/
+
+# Certificates / Keys
+*.pem
+*.key
+*.cert

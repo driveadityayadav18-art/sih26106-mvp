@@ -1,0 +1,358 @@
+Delivered-To: drive.adityayadav18@gmail.com
+Received: by 2002:ac0:ec8a:0:b0:400:ad96:cef with SMTP id x10csp1170394imt;
+        Sat, 29 Aug 2026 12:11:23 -0700 (PDT)
+X-Received: by 2002:a05:622a:258d:b0:52f:b495:e9a5 with SMTP id d75a77b69052e-52fb96fee36mr212300941cf.37.1788030683694;
+        Sat, 29 Aug 2026 12:11:23 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1788030683; cv=none;
+        d=google.com; s=arc-20260327;
+        b=mRNQbL32Yaqml+63sYL3juGiDBKu2vfO0FcDo4Pw88w8Uzy0A3DwWZ9qdF9SGG0M+W
+         Sym62YfJn+oyr8sFjIlhQl1RYoccsg6ZfJKG4tPV0FXIr25KuTXgdVurCY0G2T6ZVA7R
+         xPu9+Dly334GOGX65WpY32QSRTRUL3QkgMv82PrBxxK4WDDFwhEOSHoRZjFQew6nCDKu
+         eiJLpJ62wjOEe7QAkvkmUwpoHelcmXlTNI73okIqx2cpxuvR2sAsqGcZnxtyBbMBIlto
+         JtA53Jb/GtTrq0xtcK21vTLyx2CQdMBzQfI4J+EFRwSU0/7pNHDuh9mNyQdRj2WXxDWd
+         57tQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20260327;
+        h=content-transfer-encoding:message-id:reply-to:to:from:subject
+         :mime-version:date:sender:dkim-signature:dkim-signature;
+        bh=k8cLNBV3kLzicIIRlmbd8pgwfYO6MUujnEpPypYkhPA=;
+        fh=dHXgRMu5zAyW+lCfD5YDbvdH5qYI4gBFKhI90HOm7/8=;
+        b=DdyI1uMqFp+Pa0g4ZVYdOmYazpFBiX8aTnPPrCGfHIKfi9b0gw/U51aifAYZjgQGQ5
+         JTOlRKs/ztfUk8NJ/XPGRggMWheZc4ojglmBmdmjN5+tFQ5GaZNzYVb+3I/w5rHXbh85
+         4Q/or2a5cYilsBcrolmUnCOzEm8LDXwPcWINl1P5xq/akW1XpKSMVDUkbqZiPJHz4aAa
+         EfpqxE9wsVLtNveTFzwosbqJRMsJLuudKPfvJBSqsDsTQ8Cs4Qd/sX8E3XI850S0k2g2
+         tP2ylEbqpPts9qNDyUGDYgyv3dKoX4pJxrunHqTi1w4MFX4PRHOKZl09YFl2h7SHWSk+
+         HYFQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@mail.manus.im header.s=mailo header.b=HkP+Wd1P;
+       dkim=pass header.i=@mailgun.org header.s=mg header.b=XeeaLFF7;
+       spf=pass (google.com: domain of bounce+9b1d95.660053-drive.adityayadav18=gmail.com@mail.manus.im designates 198.244.54.143 as permitted sender) smtp.mailfrom="bounce+9b1d95.660053-drive.adityayadav18=gmail.com@mail.manus.im";
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=mail.manus.im
+Return-Path: <bounce+9b1d95.660053-drive.adityayadav18=gmail.com@mail.manus.im>
+Received: from a143.aedd4647.use4.send.mailgun.net (a143.aedd4647.use4.send.mailgun.net. [198.244.54.143])
+        by mx.google.com with UTF8SMTPS id d75a77b69052e-52fbe8325fdsi55077181cf.158.2026.08.29.12.11.23
+        for <drive.adityayadav18@gmail.com>
+        (version=TLS1_2 cipher=ECDHE-ECDSA-AES128-GCM-SHA256 bits=128/128);
+        Sat, 29 Aug 2026 12:11:23 -0700 (PDT)
+Received-SPF: pass (google.com: domain of bounce+9b1d95.660053-drive.adityayadav18=gmail.com@mail.manus.im designates 198.244.54.143 as permitted sender) client-ip=198.244.54.143;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@mail.manus.im header.s=mailo header.b=HkP+Wd1P;
+       dkim=pass header.i=@mailgun.org header.s=mg header.b=XeeaLFF7;
+       spf=pass (google.com: domain of bounce+9b1d95.660053-drive.adityayadav18=gmail.com@mail.manus.im designates 198.244.54.143 as permitted sender) smtp.mailfrom="bounce+9b1d95.660053-drive.adityayadav18=gmail.com@mail.manus.im";
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=mail.manus.im
+DKIM-Signature: a=rsa-sha256; v=1; c=relaxed/relaxed; d=mail.manus.im; q=dns/txt; s=mailo; t=1788030683; x=1788037883;
+ h=Content-Transfer-Encoding: Content-Type: Message-Id: Reply-To: To: To: From: From: Subject: Subject: Mime-Version: Date: Sender: Sender: X-Feedback-Id;
+ bh=k8cLNBV3kLzicIIRlmbd8pgwfYO6MUujnEpPypYkhPA=;
+ b=HkP+Wd1PnP+GLt+AVsE0/vszQ4FrhWqnuBwBEyt0A64MCE3oq/ychyqMSeEPlj5s2w7icuhFZ1yRGMJN6UKwV07hGbGvwRBlRDYFMRyrl9t3zZ76OTCmsLh+QuBA76GxaQsSc+PrxtmK0Jjxc6dWQ67jhtYtrQvXmko6DWuEXSI=
+DKIM-Signature: a=rsa-sha256; v=1; c=relaxed/relaxed; d=mailgun.org; q=dns/txt; s=mg; t=1788030683; x=1788037883;
+ h=Content-Transfer-Encoding: Content-Type: Message-Id: Reply-To: To: To: From: From: Subject: Subject: Mime-Version: Date: Sender: Sender: X-Feedback-Id;
+ bh=k8cLNBV3kLzicIIRlmbd8pgwfYO6MUujnEpPypYkhPA=;
+ b=XeeaLFF7v3mr5f7N5covgWBo0ZE6Lp0of88j2oAmfnTmxlom5P83sWICK6+60dzKmwOblW5H3EVgAwtWAKOWaBQ99wHI3kFEFYKJ7rpnXHH9rBwiETuE7t8Vj4rcwO8VTClGdFWTE3TUbBLDWLI3PhENMRoQczz0QdhkI5vzr5E=
+X-Mailgun-Sid: WyI2ZjkwNSIsImRyaXZlLmFkaXR5YXlhZGF2MThAZ21haWwuY29tIiwiNjYwMDUzIl0=
+X-Feedback-Id: noreply@mail.manus.im:manus-project-invite-20260829:67c9efd25271d2e6a530e0e6:mailgun
+Received: by 0d40df03a53066ef242b81573c295396aeb8838bedb0059a021241b289f63f54 with HTTP
+ id 6a932edb8b798e63672fa535; Sat, 29 Aug 2026 19:11:23 GMT
+X-Mailgun-Sending-Ip: 198.244.54.143
+Sender: noreply@mail.manus.im
+Date: Sat, 29 Aug 2026 19:11:23 +0000
+Mime-Version: 1.0
+Subject: Gaming Army Live has invited you to visit circleframe
+From: Manus Team <noreply@mail.manus.im>
+To: drive.adityayadav18@gmail.com
+X-Mailgun-Tag: manus-project-invite-20260829
+Reply-To: 
+Message-Id: <20260829191123.b85c84b32425c592@mail.manus.im>
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!doctype html>
+<html lang=3D"en" dir=3D"auto" xmlns=3D"http://www.w3.org/1999/xhtml" xmlns=
+:v=3D"urn:schemas-microsoft-com:vml" xmlns:o=3D"urn:schemas-microsoft-com:o=
+ffice:office">
+<head>
+<title></title>
+
+<meta http-equiv=3D"X-UA-Compatible" content=3D"IE=3Dedge">
+
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3DUTF-8">
+<meta name=3D"viewport" content=3D"width=3Ddevice-width, initial-scale=3D1"=
+>
+<style type=3D"text/css">
+
+#outlook a { padding:0; }
+body { margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjus=
+t:100%; }
+table, td { border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:=
+0pt; }
+img { border:0;height:auto;line-height:100%; outline:none;text-decoration:n=
+one;-ms-interpolation-mode:bicubic; }
+p { display:block;margin:13px 0; }
+</style>
+
+
+
+<link href=3D"https://fonts.googleapis.com/css?family=3DInter:600,400" rel=
+=3D"stylesheet" type=3D"text/css">
+
+<style type=3D"text/css">
+
+@media only screen and (min-width:599px) {
+=2Ef { width:504px !important; max-width: 504px; }
+=2Ek { width:536px !important; max-width: 536px; }
+}
+</style>
+<style media=3D"screen and (min-width:599px)">
+=2Emoz-text-html .f { width:504px !important; max-width: 504px; }
+=2Emoz-text-html .k { width:536px !important; max-width: 536px; }
+</style>
+<style type=3D"text/css">
+
+body {
+-webkit-font-smoothing:antialiased;
+-moz-osx-font-smoothing:grayscale;
+}
+a[x-apple-data-detectors] {
+color: inherit !important;
+text-decoration: none !important;
+}
+u + .emailify a {
+color: inherit !important;
+text-decoration: none!important;
+}
+#MessageViewBody a {
+color: inherit !important;
+text-decoration: none!important;
+}
+@media only screen and (max-width:599px) {
+=2Eemailify { height:100% !important; m=
+argin:0 !important; padding:0 !importa=
+nt; width:100% !important; }
+td.b td { background-size: cover!important; }
+div.r > table > tbody > tr > td { direction: ltr!important; }
+img { background-color: transparent!important; }
+div.r.e > table > tbody > tr > td, div.r.e > div > table > tbody > tr > td =
+{ padding-right:16px!important }
+div.r.y > table > tbody > tr > td, div.r.y > div > table > tbody > tr > td =
+{ padding-left:16px!important }
+=2Eqk td {
+-webkit-transform: perspective(1px) translateZ(0);
+transform: perspective(1px) translateZ(0);
+box-shadow: 0 0 1px rgba(0, 0, 0, 0);
+-webkit-transition-duration: 0.3s;
+transition-duration: 0.3s;
+-webkit-transition-property: transform;
+transition-property: transform;
+}
+=2Eqk td:hover, .qk td:focus, .qk td:active {
+-webkit-transform: scale(1.1);
+transform: scale(1.1);
+}
+}
+=2Eqk td {
+-webkit-transform: perspective(1px) translateZ(0);
+transform: perspective(1px) translateZ(0);
+box-shadow: 0 0 1px rgba(0, 0, 0, 0);
+-webkit-transition-duration: 0.3s;
+transition-duration: 0.3s;
+-webkit-transition-property: transform;
+transition-property: transform;
+}
+=2Eqk td:hover, .qk td:focus, .qk td:active {
+-webkit-transform: scale(1.1);
+transform: scale(1.1);
+}
+</style>
+<meta name=3D"format-detection" content=3D"telephone=3Dno, date=3Dno, addre=
+ss=3Dno, email=3Dno, url=3Dno">
+<meta name=3D"x-apple-disable-message-reformatting">
+<meta name=3D"color-scheme" content=3D"light dark">
+<meta name=3D"supported-color-schemes" content=3D"light dark">
+
+
+</head>
+<body lang=3D"en" link=3D"#DD0000" vlink=3D"#DD0000" class=3D"emailify" sty=
+le=3D"mso-line-height-rule: exactly; mso-hyphenate: none; word-spacing: nor=
+mal; background-color: #1e1e1e;">
+<div style=3D"background-color:#1e1e1e;" lang=3D"en" dir=3D"auto">
+
+<div class=3D"r e y" style=3D"background:#ffffff;background-color:#ffffff;m=
+argin:0px auto;max-width:600px;">
+<table align=3D"center" border=3D"0" cellpadding=3D"0" cellspacing=3D"0" ro=
+le=3D"presentation" style=3D"background:#ffffff;background-color:#ffffff;wi=
+dth:100%;">
+<tbody>
+<tr>
+<td style=3D"border:none;direction:ltr;font-size:0;padding:32px 48px 16px 4=
+8px;text-align:left;">
+
+<div class=3D"f h" style=3D"font-size:0;text-align:left;direction:ltr;displ=
+ay:inline-block;vertical-align:middle;width:100%;">
+<table border=3D"0" cellpadding=3D"0" cellspacing=3D"0" role=3D"presentatio=
+n" style=3D"border:none;vertical-align:middle;" width=3D"100%">
+<tbody>
+<tr>
+<td align=3D"center" style=3D"font-size:0;padding:0;word-break:break-word;"=
+>
+<table border=3D"0" cellpadding=3D"0" cellspacing=3D"0" role=3D"presentatio=
+n" style=3D"border-collapse:collapse;border-spacing:0;">
+<tbody>
+<tr>
+<td style=3D"width:100px;">
+<img alt src=3D"img/99ac8a72e22b02231caef21f52a1b23f.png" style=3D"border:0=
+;display:block;outline:none;text-decoration:none;height:auto;width:100%;fon=
+t-size:13px;" width=3D"100">
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class=3D"r e y" style=3D"background:#ffffff;background-color:#ffffff;m=
+argin:0px auto;max-width:600px;">
+<table align=3D"center" border=3D"0" cellpadding=3D"0" cellspacing=3D"0" ro=
+le=3D"presentation" style=3D"background:#ffffff;background-color:#ffffff;wi=
+dth:100%;">
+<tbody>
+<tr>
+<td style=3D"border:none;direction:ltr;font-size:0;padding:10px 48px 0px 48=
+px;text-align:left;">
+
+<div class=3D"f h" style=3D"font-size:0;text-align:left;direction:ltr;displ=
+ay:inline-block;vertical-align:middle;width:100%;">
+<table border=3D"0" cellpadding=3D"0" cellspacing=3D"0" role=3D"presentatio=
+n" style=3D"border:none;vertical-align:middle;" width=3D"100%">
+<tbody>
+<tr>
+<td align=3D"center" style=3D"font-size:0;padding-bottom:12px;word-break:br=
+eak-word;">
+<div style=3D"font-family:'Inter', 'Arial', sans-serif;font-size:20px;font-=
+weight:600;line-height:150%;text-align:center;color:#262626;"><p style=3D"M=
+argin:0;mso-line-height-alt:30px;font-size:20px;line-height:150%;">Gaming A=
+rmy Live has invited you to visit circleframe</p></div>
+</td>
+</tr>
+<tr>
+<td align=3D"center" style=3D"font-size:0;word-break:break-word;">
+<div style=3D"font-family:'Inter', 'Arial', sans-serif;font-size:16px;font-=
+weight:400;line-height:150%;text-align:center;color:#535350;"><p style=3D"M=
+argin:0;mso-line-height-alt:24px;font-size:16px;line-height:150%;">You have=
+ been invited to visit the<span style=3D"font-weight:600;color:#34322d;"> c=
+ircleframe</span>. Click the button below to get started. </p></div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class=3D"r e y" style=3D"background:#ffffff;background-color:#ffffff;m=
+argin:0px auto;max-width:600px;">
+<table align=3D"center" border=3D"0" cellpadding=3D"0" cellspacing=3D"0" ro=
+le=3D"presentation" style=3D"background:#ffffff;background-color:#ffffff;wi=
+dth:100%;">
+<tbody>
+<tr>
+<td style=3D"border:none;direction:ltr;font-size:0;padding:24px 32px 24px 3=
+2px;text-align:left;">
+
+<div class=3D"k h" style=3D"font-size:0;text-align:left;direction:ltr;displ=
+ay:inline-block;vertical-align:middle;width:100%;">
+<table border=3D"0" cellpadding=3D"0" cellspacing=3D"0" role=3D"presentatio=
+n" style=3D"border:none;vertical-align:middle;" width=3D"100%">
+<tbody>
+<tr>
+<td align=3D"center" class=3D"b qk" style=3D"font-size:0;padding:0;word-bre=
+ak:break-word;">
+<table border=3D"0" cellpadding=3D"0" cellspacing=3D"0" role=3D"presentatio=
+n" style=3D"border-collapse:separate;width:139px;line-height:100%;">
+<tbody>
+<tr>
+<td align=3D"center" bgcolor=3D"#1a1a19" class=3D"c" role=3D"presentation" =
+style=3D"background:#1a1a19;border:none;border-radius:8px 8px 8px 8px;curso=
+r:auto;mso-padding-alt:14px 0px 14px 0px;vertical-align:middle;" valign=3D"=
+middle">
+
+<a href=3D"https://email.mail.manus.im/c/eJw0jltuhDAMAE-z-QM5zgPnI4dxHNO6Ah=
+YBRdrbV1p1v2c0ml5zBkjBafUTEQTIFNx3bTHMDYqnopPEyTP52EQRJEtKfXZWETADYfHFewxjo=
+yQUW8CISVLBR4SVbRlX3n7P0Va3VLFDFuV9H2aWLZ5t_qfnzqLuqP2wW0fudr34xZ1vT48IX--O=
+PFd31bc_7MfzR-UabLvt0uFz4u6KfwEAAP__QZk_vA" class=3D"c" style=3D"display:in=
+line-block;width:139px;background-color:#1a1a19;color:#ffffff;font-family:'=
+Inter', 'Arial', sans-serif;font-size:13px;font-weight:normal;line-height:1=
+00%;margin:0;text-decoration:none;text-transform:none;padding:14px 0px 14px=
+ 0px;mso-padding-alt:0;border-radius:8px 8px 8px 8px;" target=3D"_blank">
+<span style=3D"font-size:14px;font-family:'Inter', 'Arial', sans-serif;font=
+-weight:600;color:#ffffff;line-height:121%;mso-line-height-alt:17px;">View =
+website</span>
+</a>
+
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class=3D"r e y" style=3D"background:#ffffff;background-color:#ffffff;m=
+argin:0px auto;max-width:600px;">
+<table align=3D"center" border=3D"0" cellpadding=3D"0" cellspacing=3D"0" ro=
+le=3D"presentation" style=3D"background:#ffffff;background-color:#ffffff;wi=
+dth:100%;">
+<tbody>
+<tr>
+<td style=3D"border-bottom:none;border-left:none;border-right:none;border-t=
+op:1px solid #ededed;direction:ltr;font-size:0;padding:24px 48px 24px 48px;=
+text-align:left;">
+
+<div class=3D"f h" style=3D"font-size:0;text-align:left;direction:ltr;displ=
+ay:inline-block;vertical-align:middle;width:100%;">
+<table border=3D"0" cellpadding=3D"0" cellspacing=3D"0" role=3D"presentatio=
+n" style=3D"border:none;vertical-align:middle;" width=3D"100%">
+<tbody>
+<tr>
+<td align=3D"center" style=3D"font-size:0;word-break:break-word;">
+<div style=3D"font-family:'Inter', 'Arial', sans-serif;font-size:14px;font-=
+weight:400;line-height:150%;text-align:center;color:#8c8c8c;"><p style=3D"M=
+argin:0;mso-line-height-alt:21px;font-size:14px;line-height:150%;">&copy; 2=
+026 Manus</p></div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</div>
+<img width=3D"1" height=3D"1" alt=3D"" src=3D"https://email.mail.manus.im/o=
+/eJw0zUGqwyAQANDTxF1kHEedLDzMRM3_lpqU1Aq5fSHQ_YOXo_cAzqoSTWAGC56t-o-upBQ2hA=
+0tBYANBIUJiRIY9mFVNSKgB8bFLMag1Su7xLRaJHTJLTgRNKlP3WT_vHVt6oz5rKNoybVfckmWY=
+Xgi-LtZOprq8cbz6zweJfW57qP2Mv8iNSJ-AwAA__88FjLZ"></body>
+</html>

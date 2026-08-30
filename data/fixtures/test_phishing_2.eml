@@ -1,0 +1,9 @@
+From: HR Department <hr@aicte-demo.example>
+Reply-To: payment-update@aicte-payments.example
+Return-Path: bounce@mailer-b.example
+Subject: Salary Revision Required
+Date: Fri, 25 Aug 2026 11:00:00 +0000
+
+Hello,
+Please verify your account details for salary revision.
+Click here: http://aicte-payments.example/login

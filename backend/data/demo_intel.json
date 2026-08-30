@@ -1,0 +1,12 @@
+{
+    "aicte-payments.example": {
+        "country": "Demo Land",
+        "city": "Demo City",
+        "provider": "demo_cache"
+    },
+    "203.0.113.17": {
+        "country": "Serverville",
+        "city": "Datacenter",
+        "provider": "demo_cache"
+    }
+}
