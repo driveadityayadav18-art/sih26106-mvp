@@ -162,7 +162,7 @@ To ensure rapid progress without stepping on each other's code or creating merge
 ┌────────────────────────┬───────────────────────────────────────┬──────────────────────────────────────────┐
 │ Teammate               │ Primary Responsibilities              │ STRICT Allowed Edit Scope                │
 ├────────────────────────┼───────────────────────────────────────┼──────────────────────────────────────────┤
-│ Person 1                 │ • API contracts & FastAPI orchestration│ • backend/main.py                        │
+│ Person 1               │ • API contracts & FastAPI orchestration│ • backend/main.py                        │
 │                        │ • Global error handling & middleware  │ • backend/core/ & backend/models/        │
 │                        │ • Data persistence & CORS configuration│ • Root configs (.gitignore, README.md)   │
 │                        │ • Reviewing and merging pull requests │ • Integration health & Docker/infra      │
