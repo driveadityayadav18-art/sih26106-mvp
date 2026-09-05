@@ -6,6 +6,12 @@ from backend.detection.detection import ThreatDetector
 from backend.parser.models import ParsedEmail
 
 
+def scored_reasons(result):
+    """Existing rule/score checks exclude the separately tested zero-point note."""
+    return [reason for reason in result["reason_codes"]
+            if reason["code"] != "INSUFFICIENT_EVIDENCE"]
+
+
 @pytest.mark.parametrize("status", ["pass", "unknown"])
 def test_no_authentication_failures(status):
     email = ParsedEmail()
@@ -17,7 +23,7 @@ def test_no_authentication_failures(status):
 
     assert result["score"] == 0
     assert result["band"] == "LOW"
-    assert result["reason_codes"] == []
+    assert scored_reasons(result) == []
     assert isinstance(result["limitations"], list)
 
 
@@ -38,8 +44,8 @@ def test_one_authentication_reason(field, status, code, weight):
 
     assert result["score"] == weight
     assert result["band"] == "LOW"
-    assert len(result["reason_codes"]) == 1
-    reason = result["reason_codes"][0]
+    assert len(scored_reasons(result)) == 1
+    reason = scored_reasons(result)[0]
     assert reason["code"] == code
     assert reason["weight"] == weight
     assert reason["evidence_path"] == f"authentication.{field}.result"
@@ -57,18 +63,18 @@ def test_all_authentication_failures_add_up():
 
     assert result["score"] == 30
     assert result["band"] == "REVIEW"
-    assert [reason["code"] for reason in result["reason_codes"]] == [
+    assert [reason["code"] for reason in scored_reasons(result)] == [
         "AUTH_SPF_FAIL",
         "AUTH_DKIM_FAIL_OR_NONE",
         "AUTH_DMARC_FAIL",
     ]
-    assert sum(reason["weight"] for reason in result["reason_codes"]) == 30
+    assert sum(reason["weight"] for reason in scored_reasons(result)) == 30
     assert detector.analyze(email) == result
 
     # A later email must not keep points or reasons from the previous email.
     clean_result = detector.analyze(ParsedEmail())
     assert clean_result["score"] == 0
-    assert clean_result["reason_codes"] == []
+    assert scored_reasons(clean_result) == []
 
 
 @pytest.mark.parametrize(
@@ -99,7 +105,7 @@ def test_score_limits_and_band_edges(total, expected_score, expected_band):
 
     assert result["score"] == expected_score
     assert result["band"] == expected_band
-    assert result["reason_codes"] == [reason]
+    assert scored_reasons(result) == [reason]
 
 
 @pytest.mark.parametrize("address, name, reply_to, code, weight, path", [
@@ -122,9 +128,9 @@ def test_identity_rules_are_connected(address, name, reply_to, code, weight, pat
 
     assert result["score"] == weight
     assert result["band"] == "LOW"
-    assert len(result["reason_codes"]) == 1
-    assert result["reason_codes"][0]["code"] == code
-    assert result["reason_codes"][0]["evidence_path"] == path
+    assert len(scored_reasons(result)) == 1
+    assert scored_reasons(result)[0]["code"] == code
+    assert scored_reasons(result)[0]["evidence_path"] == path
 
 
 def test_authentication_and_identity_combine_to_high():
@@ -141,13 +147,13 @@ def test_authentication_and_identity_combine_to_high():
 
     assert result["score"] == 78  # 10 + 8 + 12 + 18 + 10 + 20
     assert result["band"] == "HIGH"
-    assert [reason["code"] for reason in result["reason_codes"]] == [
+    assert [reason["code"] for reason in scored_reasons(result)] == [
         "AUTH_SPF_FAIL", "AUTH_DKIM_FAIL_OR_NONE", "AUTH_DMARC_FAIL",
         "REPLY_TO_MISMATCH", "DISPLAY_NAME_DOMAIN_MISMATCH", "LOOKALIKE_DOMAIN",
     ]
-    assert sum(reason["weight"] for reason in result["reason_codes"]) == 78
+    assert sum(reason["weight"] for reason in scored_reasons(result)) == 78
     assert detector.analyze(email) == result
-    assert detector.analyze(ParsedEmail())["reason_codes"] == []
+    assert scored_reasons(detector.analyze(ParsedEmail())) == []
 
 
 def test_aligned_identity_does_not_add_points():
@@ -158,7 +164,7 @@ def test_aligned_identity_does_not_add_points():
     result = ThreatDetector().analyze(email)
     assert result["score"] == 0
     assert result["band"] == "LOW"
-    assert result["reason_codes"] == []
+    assert scored_reasons(result) == []
 
 
 @pytest.mark.parametrize("missing", ["authentication", "spf", "message", "from_", "input"])
@@ -177,7 +183,7 @@ def test_missing_nested_data_returns_controlled_result(missing):
     result = detector.analyze(email)
     assert result["score"] == 0
     assert result["band"] == "LOW"
-    assert result["reason_codes"] == []
+    assert scored_reasons(result) == []
     assert result["limitations"]
     assert detector.analyze(email) == result
 
@@ -197,7 +203,7 @@ def test_missing_authentication_keeps_observed_identity_reason():
     email.message.reply_to = "reply@other.example"
     result = ThreatDetector().analyze(email)
     assert result["score"] == 18
-    assert result["reason_codes"][0]["code"] == "REPLY_TO_MISMATCH"
+    assert scored_reasons(result)[0]["code"] == "REPLY_TO_MISMATCH"
     assert any("SPF" in note for note in result["limitations"])
 
 
@@ -207,7 +213,7 @@ def test_missing_message_keeps_observed_authentication_reason():
     email.authentication.spf.result = "fail"
     result = ThreatDetector().analyze(email)
     assert result["score"] == 10
-    assert result["reason_codes"][0]["code"] == "AUTH_SPF_FAIL"
+    assert scored_reasons(result)[0]["code"] == "AUTH_SPF_FAIL"
     assert any("Sender" in note for note in result["limitations"])
 
 
@@ -219,13 +225,14 @@ def test_unusable_authentication_result_is_not_failure(value):
     email.authentication.dmarc.result = value
     result = ThreatDetector().analyze(email)
     assert result["score"] == 0
-    assert result["reason_codes"] == []
+    assert scored_reasons(result) == []
     assert all(any(method in note for note in result["limitations"])
                for method in ("SPF", "DKIM", "DMARC"))
 
 
 def test_complete_aligned_evidence_has_no_limitations():
     email = ParsedEmail()
+    email.message.body_text = "Monthly status report."
     email.authentication.spf.result = "pass"
     email.authentication.dkim.result = "pass"
     email.authentication.dmarc.result = "pass"
@@ -263,7 +270,7 @@ def test_malformed_sender_skips_all_identity_rules():
     email.message.reply_to = "reply@other.example"
     result = ThreatDetector().analyze(email)
     assert result["score"] == 0
-    assert result["reason_codes"] == []
+    assert scored_reasons(result) == []
     assert any("Sender" in note for note in result["limitations"])
 
 
@@ -288,9 +295,9 @@ def test_content_rules_are_connected(text, code, weight):
     result = ThreatDetector().analyze(email)
     assert result["score"] == weight
     assert result["band"] == "LOW"
-    assert len(result["reason_codes"]) == 1
-    assert result["reason_codes"][0]["code"] == code
-    assert result["reason_codes"][0]["evidence_path"] == "message.body_text"
+    assert len(scored_reasons(result)) == 1
+    assert scored_reasons(result)[0]["code"] == code
+    assert scored_reasons(result)[0]["evidence_path"] == "message.body_text"
 
 
 def test_content_repeats_are_not_counted_twice():
@@ -299,7 +306,7 @@ def test_content_repeats_are_not_counted_twice():
     email.message.body_text = "Please send your OTP. " * 3
     result = ThreatDetector().analyze(email)
     assert result["score"] == 20
-    assert len(result["reason_codes"]) == 1
+    assert len(scored_reasons(result)) == 1
 
 
 def test_content_combined_with_authentication_and_identity():
@@ -315,11 +322,11 @@ def test_content_combined_with_authentication_and_identity():
     result = detector.analyze(email)
     assert result["score"] == 88  # 10 + 18 + 25 + 20 + 15
     assert result["band"] == "HIGH"
-    assert [reason["code"] for reason in result["reason_codes"]] == [
+    assert [reason["code"] for reason in scored_reasons(result)] == [
         "AUTH_SPF_FAIL", "REPLY_TO_MISMATCH", "URGENT_PAYMENT_REQUEST",
         "CREDENTIAL_REQUEST", "SENSITIVE_DATA_REQUEST",
     ]
-    assert sum(reason["weight"] for reason in result["reason_codes"]) == 88
+    assert sum(reason["weight"] for reason in scored_reasons(result)) == 88
     assert detector.analyze(email) == result
     assert detector.analyze(ParsedEmail())["score"] == 0
     email.authentication.dkim.result = "fail"
@@ -335,7 +342,7 @@ def test_content_safety_advice_adds_no_points():
     )
     result = ThreatDetector().analyze(email)
     assert result["score"] == 0
-    assert result["reason_codes"] == []
+    assert scored_reasons(result) == []
 
 
 @pytest.mark.parametrize("kind, expected_score, expected_codes", [
@@ -356,7 +363,7 @@ def test_url_attachment_rules_connected(kind, expected_score, expected_codes):
     result = ThreatDetector().analyze(email)
     assert result["score"] == expected_score
     assert result["band"] == ("REVIEW" if expected_score >= 30 else "LOW")
-    assert [r["code"] for r in result["reason_codes"]] == expected_codes
+    assert [r["code"] for r in scored_reasons(result)] == expected_codes
 
 
 def test_urls_attachments_combine_with_existing_rules_and_deduplicate():
@@ -372,7 +379,7 @@ def test_urls_attachments_combine_with_existing_rules_and_deduplicate():
     result = detector.analyze(email)
     assert result["score"] == 75  # 10 + 18 + 20 + 10 + 5 + 12
     assert result["band"] == "HIGH"
-    assert [r["code"] for r in result["reason_codes"]] == [
+    assert [r["code"] for r in scored_reasons(result)] == [
         "AUTH_SPF_FAIL", "REPLY_TO_MISMATCH", "CREDENTIAL_REQUEST",
         "SUSPICIOUS_URL_PATH", "SHORTENED_URL", "SUSPICIOUS_ATTACHMENT",
     ]
@@ -391,10 +398,10 @@ def test_header_rule_connected(code, score):
     result = ThreatDetector().analyze(email)
     assert result["score"] == score
     assert result["band"] == "LOW"
-    assert len(result["reason_codes"]) == (1 if score else 0)
+    assert len(scored_reasons(result)) == (1 if score else 0)
     if score:
-        assert result["reason_codes"][0]["code"] == "HEADER_ANOMALY"
-        assert result["reason_codes"][0]["evidence_path"] == "warnings[0].code"
+        assert scored_reasons(result)[0]["code"] == "HEADER_ANOMALY"
+        assert scored_reasons(result)[0]["evidence_path"] == "warnings[0].code"
 
 
 def test_optional_context_is_connected_without_changing_old_call():
@@ -412,8 +419,8 @@ def test_optional_context_is_connected_without_changing_old_call():
     result = detector.analyze(email, context)
     assert result["score"] == 15
     assert result["band"] == "LOW"
-    assert result["reason_codes"][0]["code"] == "REUSED_INDICATOR"
-    assert result["reason_codes"][0]["evidence_path"] == "message.from_.address"
+    assert scored_reasons(result)[0]["code"] == "REUSED_INDICATOR"
+    assert scored_reasons(result)[0]["evidence_path"] == "message.from_.address"
     assert detector.analyze(email) == baseline
 
 
@@ -433,10 +440,10 @@ def test_header_context_and_existing_rules_combine():
     result = detector.analyze(email, context)
     assert result["score"] == 78  # 10 + 18 + 25 + 10 + 15
     assert result["band"] == "HIGH"
-    assert [r["code"] for r in result["reason_codes"]] == [
+    assert [r["code"] for r in scored_reasons(result)] == [
         "AUTH_SPF_FAIL", "REPLY_TO_MISMATCH", "URGENT_PAYMENT_REQUEST",
         "HEADER_ANOMALY", "REUSED_INDICATOR",
     ]
-    assert sum(r["weight"] for r in result["reason_codes"]) == 78
+    assert sum(r["weight"] for r in scored_reasons(result)) == 78
     assert detector.analyze(email, context) == result
     assert detector.analyze(ParsedEmail())["score"] == 0

@@ -83,6 +83,16 @@ REUSED_INDICATOR_TYPES = ("domain", "url", "attachment_sha256")
 # Missing / unavailable evidence
 INSUFFICIENT_EVIDENCE_SCORE = 0
 
+AUTH_RESULT_VALUES = {
+    "spf": ("pass", "fail", "softfail", "neutral", "none", "temperror", "permerror"),
+    "dkim": ("pass", "fail", "none", "neutral", "temperror", "permerror"),
+    "dmarc": ("pass", "fail", "none", "bestguesspass", "temperror", "permerror"),
+}
+INCOMPLETE_PARSER_WARNING_CODES = (
+    "MIME_PARSE_WARNING", "HEADER_DECODE_WARNING", "BODY_DECODE_WARNING",
+    "URL_PARSE_WARNING", "ATTACHMENT_METADATA_WARNING",
+)
+
 
 # Risk band thresholds
 LOW_MAX_SCORE = 29

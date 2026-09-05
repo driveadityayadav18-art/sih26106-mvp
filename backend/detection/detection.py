@@ -2,7 +2,6 @@ from backend.detection.rules.authentication import (
     check_spf_fail,
     check_dkim_fail_or_none,
     check_dmarc_fail,
-    _get_auth_result,
 )
 from backend.detection.config import (
     LOW_MAX_SCORE,
@@ -30,37 +29,18 @@ from backend.detection.rules.urls_attachments import (
 from backend.detection.context import DetectionContext
 from backend.detection.rules.headers import check_header_anomaly
 from backend.detection.rules.context import check_reused_indicator
+from backend.detection.rules.evidence import check_insufficient_evidence, evidence_gaps
 
 
 def _collect_limitations(parsed_email):
     """Explain skipped checks without adding points or exposing email content."""
-    limitations = []
-    known_results = {
-        "spf": ("pass", "fail", "softfail", "neutral", "none", "temperror", "permerror"),
-        "dkim": ("pass", "fail", "none", "neutral", "temperror", "permerror"),
-        "dmarc": ("pass", "fail", "none", "bestguesspass", "temperror", "permerror"),
-    }
-    for method, statuses in known_results.items():
-        result = _get_auth_result(parsed_email, method)
-        if result not in statuses:
-            limitations.append(
-                f"{method.upper()} result was missing or unusable; this check was skipped."
-            )
-        elif result in ("temperror", "permerror"):
-            limitations.append(
-                f"{method.upper()} reported an authentication error; this is not treated as a failure."
-            )
-
+    limitations = [note for _, note in evidence_gaps(parsed_email)]
     message = getattr(parsed_email, "message", None)
-    if _get_sender_domain(parsed_email) is None:
-        limitations.append(
-            "Sender address was missing or unusable; identity checks were skipped."
-        )
-    else:
+    if _get_sender_domain(parsed_email) is not None:
         reply_to = getattr(message, "reply_to", None)
-        if _get_domain(reply_to) is None:
+        if reply_to is None or reply_to == "":
             limitations.append(
-                "Reply-To was missing or unusable; the reply-domain comparison was skipped. "
+                "Reply-To was missing; the reply-domain comparison was skipped. "
                 "A missing Reply-To is normal and adds no points."
             )
         sender = getattr(message, "from_", None)
@@ -71,7 +51,7 @@ def _collect_limitations(parsed_email):
             limitations.append(
                 "Display name was not a usable plain email address; its domain comparison was skipped."
             )
-    return limitations
+    return list(dict.fromkeys(limitations))
 
 
 class ThreatDetector:
@@ -133,6 +113,11 @@ class ThreatDetector:
             if result:
                 score += result["weight"]
                 reason_code.append(result)
+
+        # Missing evidence is visible but adds zero points.
+        result = check_insufficient_evidence(parsed_email)
+        if result:
+            reason_code.append(result)
 
         # Assess band
         score = max(0, min(MAX_SCORE, score))
