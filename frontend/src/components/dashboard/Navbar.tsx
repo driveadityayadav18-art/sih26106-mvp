@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Shield, Plus } from "lucide-react";
 import { GradientButton } from "@/components/ui/gradient-button";
 
@@ -8,6 +8,71 @@ interface NavbarProps {
   apiBaseUrl?: string;
   onNewScan?: () => void;
 }
+
+// ── Health-check sub-component ────────────────────────────────────────────────
+
+type BackendStatus = "checking" | "online" | "offline";
+
+function BackendStatusPill({
+  apiBaseUrl,
+  formattedHost,
+}: {
+  apiBaseUrl: string;
+  formattedHost: string;
+}) {
+  const [status, setStatus] = useState<BackendStatus>("checking");
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/v1/health`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        setStatus(res.ok ? "online" : "offline");
+      } catch {
+        setStatus("offline");
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 30_000);
+    return () => clearInterval(interval);
+  }, [apiBaseUrl]);
+
+  const dotClass =
+    status === "checking"
+      ? "bg-zinc-500"
+      : status === "online"
+      ? "bg-emerald-500 animate-pulse"
+      : "bg-red-500 animate-pulse";
+
+  const label =
+    status === "checking"
+      ? "Connecting…"
+      : status === "online"
+      ? "Online"
+      : "Offline";
+
+  const labelClass =
+    status === "checking"
+      ? "text-zinc-400"
+      : status === "online"
+      ? "text-emerald-400"
+      : "text-red-400";
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800/80 px-3 py-1 rounded-md flex items-center gap-2 text-xs font-sans text-zinc-400 select-none">
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} />
+      <span>Backend:</span>
+      <span className="text-zinc-200 font-mono text-[11px]">
+        {formattedHost || "localhost:8000"}
+      </span>
+      <span className={`font-medium ${labelClass}`}>{label}</span>
+    </div>
+  );
+}
+
+// ── Main Navbar ───────────────────────────────────────────────────────────────
 
 export function Navbar({
   apiBaseUrl = "http://localhost:8000",
@@ -40,14 +105,8 @@ export function Navbar({
 
       {/* Control Section (Right) */}
       <div className="flex items-center gap-3">
-        {/* Backend Status Pill */}
-        <div className="bg-zinc-900 border border-zinc-800/80 px-3 py-1 rounded-md flex items-center gap-2 text-xs font-sans text-zinc-400 select-none">
-          <span className="w-2 h-2 rounded-full bg-[#D47E30] animate-pulse flex-shrink-0" />
-          <span>Backend:</span>
-          <span className="text-zinc-200 font-mono text-[11px]">
-            {formattedHost || "localhost:8000"}
-          </span>
-        </div>
+        {/* Backend Status Pill — real health check */}
+        <BackendStatusPill apiBaseUrl={apiBaseUrl} formattedHost={formattedHost} />
 
         {/* Primary Action Button */}
         <GradientButton

@@ -465,7 +465,10 @@ export default function Home() {
       <Navbar
         apiBaseUrl={API_BASE_URL}
         onNewScan={() => {
+          setCaseData(null);          // clear old results from screen
+          setError(null);             // clear old error messages
           if (fileInputRef.current) {
+            fileInputRef.current.value = ""; // allow same file to be re-uploaded
             fileInputRef.current.click();
           }
         }}
@@ -477,7 +480,7 @@ export default function Home() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".eml,.msg,image/*"
+          accept=".eml"
           onChange={onFileChange}
           className="hidden"
           id="eml-upload-input"
@@ -506,7 +509,7 @@ export default function Home() {
                   </span>
                 </p>
                 <p className="text-xs text-zinc-400 font-sans">
-                  image/*, .eml, .msg • Max 10.0 MB • Parsed in isolated sandbox
+                  .eml files only • Max 10.0 MB • Parsed in isolated sandbox
                 </p>
               </div>
             </div>
@@ -671,6 +674,45 @@ export default function Home() {
                       </span>
                       <div className="font-mono text-xs text-[#FDFBD4] bg-[#121417] p-2 rounded-md border border-[#2A231D] break-all min-h-[38px] flex items-center">
                         {caseData.message?.return_path || "None specified"}
+                      </div>
+                    </div>
+
+                    {/* Authentication Status — SPF / DKIM */}
+                    <div className="flex flex-col gap-1.5 md:col-span-2">
+                      <span className="text-[11px] font-sans font-medium uppercase tracking-wider text-zinc-400 block mb-1.5">
+                        Authentication
+                      </span>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          {
+                            label: "SPF",
+                            value:
+                              caseData.message?.spf ??
+                              caseData.message?.authentication?.spf,
+                          },
+                          {
+                            label: "DKIM",
+                            value:
+                              caseData.message?.dkim ??
+                              caseData.message?.authentication?.dkim,
+                          },
+                        ].map(({ label, value }) => {
+                          const status = (value || "none").toLowerCase();
+                          const color =
+                            status === "pass"
+                              ? "bg-emerald-900/40 text-emerald-300 border-emerald-700/50"
+                              : status === "fail"
+                              ? "bg-red-900/40 text-red-300 border-red-700/50"
+                              : "bg-zinc-800/60 text-zinc-400 border-zinc-700/50";
+                          return (
+                            <span
+                              key={label}
+                              className={`px-3 py-1 rounded-full text-xs font-mono border font-semibold ${color}`}
+                            >
+                              {label}: {status.toUpperCase()}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
