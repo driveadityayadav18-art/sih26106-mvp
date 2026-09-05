@@ -24,14 +24,61 @@ URGENT_PAYMENT_SCORE = 25
 CREDENTIAL_REQUEST_SCORE = 20
 SENSITIVE_DATA_REQUEST_SCORE = 15
 
+# Keep requests local: the item must follow the action within eight words.
+# Pressure must be within eight words of that request. These are prototype
+# matching limits, not measured accuracy claims.
+REQUEST_GAP = 8
+PRESSURE_GAP = 8
+NEGATION_WINDOW = 4
+
+PAYMENT_ACTIONS = ("send", "transfer", "pay", "wire", "remit")
+PAYMENT_ITEMS = ("funds", "payment", "invoice", "money", "balance")
+PRESSURE_PHRASES = (
+    "immediately", "right now", "within an hour", "urgently", "urgent",
+    "as soon as possible", "asap", "without delay",
+)
+CREDENTIAL_ACTIONS = ("send", "share", "provide", "enter", "submit", "give")
+CREDENTIAL_ITEMS = (
+    "password", "passwords", "otp", "one time code", "one time password",
+    "recovery code", "recovery codes", "verification code", "login credentials",
+)
+SENSITIVE_ACTIONS = ("send", "share", "upload", "provide", "submit", "give")
+SENSITIVE_ITEMS = (
+    "passport", "passport copy", "bank account details", "bank account number",
+    "aadhaar number", "pan number", "social security number",
+)
+NEGATIONS = {"no", "not", "never", "don't", "dont", "cannot", "can't", "shouldn't", "mustn't", "avoid"}
+
+
 # URLs / Attachments
 SUSPICIOUS_URL_PATH_SCORE = 10
 SHORTENED_URL_SCORE = 5
 SUSPICIOUS_ATTACHMENT_SCORE = 12
 
+# Exact host matches only; this is a small prototype list, not reputation data.
+URL_SHORTENER_HOSTS = ("bit.ly", "tinyurl.com", "t.co")
+URL_PATH_REQUEST_TYPES = {
+    "login": ("credential",),
+    "verify": ("credential", "sensitive"),
+    "update": ("credential", "sensitive"),
+    "payment": ("payment",),
+}
+RISKY_ATTACHMENT_EXTENSIONS = (".exe", ".scr", ".bat", ".cmd", ".js", ".vbs", ".ps1", ".msi")
+RISKY_ATTACHMENT_CONTENT_TYPES = (
+    "application/x-msdownload", "application/x-dosexec",
+    "application/x-executable", "application/x-sh",
+)
+
 # Structural / Context
 HEADER_ANOMALY_SCORE = 10
 REUSED_INDICATOR_SCORE = 15
+
+# Only observed malformed headers, not routine missing fields or private IPs.
+HEADER_ANOMALY_WARNING_CODES = (
+    "MALFORMED_ADDRESS", "MALFORMED_DATE", "MALFORMED_RECEIVED_HEADER",
+)
+# Initial local handoff supports these exact indicator kinds.
+REUSED_INDICATOR_TYPES = ("domain", "url", "attachment_sha256")
 
 # Missing / unavailable evidence
 INSUFFICIENT_EVIDENCE_SCORE = 0

@@ -5,9 +5,17 @@ from ..config import (
 )
 
 
+def _get_auth_result(parsed_email, method):
+    """Read an observed result safely, without treating missing data as failure."""
+    authentication = getattr(parsed_email, "authentication", None)
+    observation = getattr(authentication, method, None)
+    result = getattr(observation, "result", None)
+    return result if isinstance(result, str) else None
+
+
 def check_spf_fail(parsed_email):
 
-    if parsed_email.authentication.spf.result == "fail":
+    if _get_auth_result(parsed_email, "spf") == "fail":
         return {
             "code": "AUTH_SPF_FAIL",
             "message": "SPF Failed",
@@ -20,7 +28,7 @@ def check_spf_fail(parsed_email):
 
 def check_dkim_fail_or_none(parsed_email):
 
-    if parsed_email.authentication.dkim.result in ("fail", "none"):
+    if _get_auth_result(parsed_email, "dkim") in ("fail", "none"):
         return {
             "code": "AUTH_DKIM_FAIL_OR_NONE",
             "message": "DKIM authentication failed or is absent",
@@ -33,7 +41,7 @@ def check_dkim_fail_or_none(parsed_email):
 
 def check_dmarc_fail(parsed_email):
 
-    if parsed_email.authentication.dmarc.result == "fail":
+    if _get_auth_result(parsed_email, "dmarc") == "fail":
         return {
             "code": "AUTH_DMARC_FAIL",
             "message": "DMARC authentication failed",
