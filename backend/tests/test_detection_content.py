@@ -120,3 +120,81 @@ def test_reason_does_not_echo_secrets():
     result = check_credential_request(email)
     assert result is not None
     assert "private-secret-123" not in result["message"]
+
+
+@pytest.mark.parametrize("text", [
+    "Please update our beneficiary banking details immediately.",
+    "Change vendor bank details right now.",
+    "Replace bank account details urgently.",
+])
+def test_urgent_bank_change_patterns(text):
+    email = ParsedEmail()
+    email.message.body_text = text
+    result = check_urgent_payment_request(email)
+    assert result["code"] == "URGENT_PAYMENT_REQUEST"
+    assert result["weight"] == 25
+    assert result["evidence_path"] == "message.body_text"
+
+
+@pytest.mark.parametrize("text", [
+    "Please update our beneficiary banking details when convenient.",
+    "Do not update beneficiary banking details immediately.",
+    "Update the meeting details immediately.",
+    "Your bank account details were updated immediately.",
+    "Update the invoice immediately.",
+])
+def test_bank_change_near_misses(text):
+    email = ParsedEmail()
+    email.message.body_text = text
+    assert check_urgent_payment_request(email) is None
+
+
+LURE_TEXT = (
+    "Keep your current password active by verifying identity below. "
+    "If you fail to verify before the deadline, account access will be suspended."
+)
+
+
+@pytest.mark.parametrize("field", ["subject", "body_text"])
+def test_password_retention_lure(field):
+    email = ParsedEmail()
+    setattr(email.message, field, LURE_TEXT)
+    result = check_credential_request(email)
+    assert result["code"] == "CREDENTIAL_REQUEST"
+    assert result["weight"] == 20
+    assert result["evidence_path"] == f"message.{field}"
+    assert check_credential_request(email) == result
+
+
+@pytest.mark.parametrize("text", [
+    "Keep existing password.",
+    "Keep your current password private and never share it.",
+    "Keep existing password and verify your identity.",
+    "Verify your identity or your account will be locked.",
+    "Keep existing password. Your account will be locked.",
+    "Do not keep existing password. Verify your identity. Your account will be locked.",
+    "Keep existing password. Never verify your identity. Your account will be locked.",
+    "Keep existing password. Verify your identity. Your account will not be suspended.",
+])
+def test_password_lure_requires_all_three_parts(text):
+    email = ParsedEmail()
+    email.message.body_text = text
+    assert check_credential_request(email) is None
+
+
+def test_password_lure_does_not_join_fields_or_distant_text():
+    email = ParsedEmail()
+    email.message.subject = "Keep existing password"
+    email.message.body_text = "Verify your identity. Your account will be locked."
+    assert check_credential_request(email) is None
+    email.message.subject = None
+    email.message.body_text = "Keep existing password. " + "report " * 90 + "Verify your identity. Your account will be locked."
+    assert check_credential_request(email) is None
+
+
+def test_lure_and_direct_request_still_return_one_reason():
+    email = ParsedEmail()
+    email.message.body_text = LURE_TEXT + " Please send your OTP."
+    result = check_credential_request(email)
+    assert isinstance(result, dict)
+    assert result["weight"] == 20

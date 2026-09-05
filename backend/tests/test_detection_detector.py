@@ -447,3 +447,38 @@ def test_header_context_and_existing_rules_combine():
     assert sum(r["weight"] for r in scored_reasons(result)) == 78
     assert detector.analyze(email, context) == result
     assert detector.analyze(ParsedEmail())["score"] == 0
+
+
+def test_bank_change_request_combines_with_authentication_and_reply_mismatch():
+    email = ParsedEmail()
+    email.message.from_.address = "accounts@company.example"
+    email.message.reply_to = "reply@other.example"
+    email.message.body_text = "Please update our beneficiary banking details immediately."
+    for method in ("spf", "dkim", "dmarc"):
+        getattr(email.authentication, method).result = "fail"
+    result = ThreatDetector().analyze(email)
+    assert result["score"] == 73
+    assert result["band"] == "HIGH"
+    assert "URGENT_PAYMENT_REQUEST" in [r["code"] for r in result["reason_codes"]]
+
+
+def test_password_lure_supplies_login_url_context_without_inflating_weights():
+    from backend.parser.models import URLMetadata
+    email = ParsedEmail()
+    email.message.from_.address = "sender@company.example"
+    email.message.reply_to = "reply@other.example"
+    email.authentication.spf.result = "neutral"
+    email.authentication.dkim.result = "none"
+    email.authentication.dmarc.result = "fail"
+    email.message.body_text = (
+        "Keep your current password active by verifying identity below. "
+        "If you fail to verify before the deadline, account access will be suspended."
+    )
+    email.message.urls = [URLMetadata(raw="https://portal.example/login", scheme="https", host="portal.example", path="/login")]
+    result = ThreatDetector().analyze(email)
+    assert result["score"] == 68  # 8 + 12 + 18 + 20 + 10
+    assert result["band"] == "REVIEW"
+    assert [r["code"] for r in scored_reasons(result)] == [
+        "AUTH_DKIM_FAIL_OR_NONE", "AUTH_DMARC_FAIL", "REPLY_TO_MISMATCH",
+        "CREDENTIAL_REQUEST", "SUSPICIOUS_URL_PATH",
+    ]

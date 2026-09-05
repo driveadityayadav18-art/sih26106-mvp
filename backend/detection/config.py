@@ -33,6 +33,11 @@ NEGATION_WINDOW = 4
 
 PAYMENT_ACTIONS = ("send", "transfer", "pay", "wire", "remit")
 PAYMENT_ITEMS = ("funds", "payment", "invoice", "money", "balance")
+BANK_CHANGE_ACTIONS = ("update", "change", "replace")
+BANK_CHANGE_ITEMS = (
+    "beneficiary banking details", "beneficiary bank details", "vendor bank details",
+    "bank account details", "payment bank details",
+)
 PRESSURE_PHRASES = (
     "immediately", "right now", "within an hour", "urgently", "urgent",
     "as soon as possible", "asap", "without delay",
@@ -42,6 +47,15 @@ CREDENTIAL_ITEMS = (
     "password", "passwords", "otp", "one time code", "one time password",
     "recovery code", "recovery codes", "verification code", "login credentials",
 )
+# Credential-retention lure: require ALL three groups nearby in one text field.
+PASSWORD_RETENTION_PHRASES = (
+    "keep existing password", "keep your existing password", "keep your current password",
+)
+IDENTITY_VERIFICATION_PHRASES = ("verify your identity", "verify identity", "verifying identity")
+ACCOUNT_THREAT_PHRASES = (
+    "account access will be suspended", "account will be suspended", "account will be locked",
+)
+CREDENTIAL_LURE_WINDOW = 80
 SENSITIVE_ACTIONS = ("send", "share", "upload", "provide", "submit", "give")
 SENSITIVE_ITEMS = (
     "passport", "passport copy", "bank account details", "bank account number",
