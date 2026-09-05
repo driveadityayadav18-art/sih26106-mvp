@@ -1,0 +1,32 @@
+From: "Central Billing Desk" <billing@procure-gov.example>
+To: "Accounts Payable" <finance@victim-org.example>
+Reply-To: payment-update@aicte-payments.example
+Return-Path: <notice@mailer-b.example>
+Subject: Past Due Notice: Outstanding Invoice #INV-9021 Settlement Required
+Message-ID: <inv-seq-9021@mailer-b.example>
+Date: Fri, 25 Aug 2026 11:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Authentication-Results: mx.victim-org.example;
+ dkim=none;
+ spf=fail (mx.victim-org.example: domain of notice@mailer-b.example does not designate 198.51.100.25 as permitted sender) smtp.mailfrom=notice@mailer-b.example;
+ dmarc=fail header.from=procure-gov.example
+Received: from mailer-b.example (mailer-b.example [198.51.100.25])
+ by relay-in.victim-org.example [203.0.113.50] with ESMTPS id 7K2mP441z
+ for <finance@victim-org.example>; Fri, 25 Aug 2026 11:30:04 +0000
+Received: from internal-dispatcher.example (node-auth [198.51.100.15])
+ by mailer-b.example [198.51.100.25] with ESMTP id 8H3xL992
+ for <finance@victim-org.example>; Fri, 25 Aug 2026 11:29:55 +0000
+
+[SYNTHETIC DEMO ARTIFACT - FOR FORENSIC INVESTIGATION TESTING ONLY]
+
+Hello Accounts Team,
+
+This is a reminder that invoice #INV-9021 remains unsettled.
+Please review the outstanding invoice schedule and remit payment to the updated remittance account:
+
+https://aicte-payments.example/invoices/INV-9021.pdf
+
+Direct all inquiries to payment-update@aicte-payments.example.
+
+Central Billing Department

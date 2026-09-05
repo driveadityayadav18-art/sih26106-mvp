@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -8,6 +8,12 @@ class EmailAddress:
     address: Optional[str] = None
     raw: Optional[str] = None
     malformed: bool = False
+
+    def to_dict(self) -> Dict[str, Optional[str]]:
+        return {
+            "name": self.name,
+            "address": self.address,
+        }
 
 
 @dataclass
@@ -20,6 +26,17 @@ class URLMetadata:
     is_https: bool = False
     parse_status: str = "parsed"
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "raw": self.raw,
+            "scheme": self.scheme,
+            "host": self.host,
+            "path": self.path,
+            "query_present": self.query_present,
+            "is_https": self.is_https,
+            "parse_status": self.parse_status,
+        }
+
 
 @dataclass
 class AttachmentMetadata:
@@ -30,6 +47,16 @@ class AttachmentMetadata:
     is_inline: bool = False
     parse_status: str = "parsed"
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "filename": self.filename,
+            "content_type": self.content_type,
+            "size_bytes": self.size_bytes,
+            "sha256": self.sha256,
+            "is_inline": self.is_inline,
+            "parse_status": self.parse_status,
+        }
+
 
 @dataclass
 class AuthenticationResult:
@@ -37,11 +64,27 @@ class AuthenticationResult:
     source: str = "unknown"
     timestamp: Optional[str] = None
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "result": self.result,
+            "source": self.source,
+            "timestamp": self.timestamp,
+        }
+
 
 @dataclass
 class DMARCResult(AuthenticationResult):
     aligned: Optional[bool] = None
     header_from_domain: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "result": self.result,
+            "aligned": self.aligned,
+            "header_from_domain": self.header_from_domain,
+            "source": self.source,
+            "timestamp": self.timestamp,
+        }
 
 
 @dataclass
@@ -50,6 +93,14 @@ class Authentication:
     dkim: AuthenticationResult = field(default_factory=AuthenticationResult)
     dmarc: DMARCResult = field(default_factory=DMARCResult)
     raw_authentication_headers: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "spf": self.spf.to_dict(),
+            "dkim": self.dkim.to_dict(),
+            "dmarc": self.dmarc.to_dict(),
+            "raw_authentication_headers": list(self.raw_authentication_headers),
+        }
 
 
 @dataclass
@@ -65,6 +116,20 @@ class ReceivedHop:
     parse_status: str = "unparsed"
     trust: str = "unknown"
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "index": self.index,
+            "raw": self.raw,
+            "from_host": self.from_host,
+            "from_ip": self.from_ip,
+            "by_host": self.by_host,
+            "by_ip": self.by_ip,
+            "with_protocol": self.with_protocol,
+            "timestamp": self.timestamp,
+            "parse_status": self.parse_status,
+            "trust": self.trust,
+        }
+
 
 @dataclass
 class Trace:
@@ -72,17 +137,36 @@ class Trace:
     earliest_reliable_observable: Optional[str] = None
     limitations: List[str] = field(default_factory=list)
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "hops": [hop.to_dict() for hop in self.hops],
+            "earliest_reliable_observable": self.earliest_reliable_observable,
+            "limitations": list(self.limitations),
+        }
+
 
 @dataclass
 class Warning:
     code: str
     message: str
 
+    def to_dict(self) -> Dict[str, str]:
+        return {
+            "code": self.code,
+            "message": self.message,
+        }
+
 
 @dataclass
 class Artifact:
     sha256: str
     byte_length: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "sha256": self.sha256,
+            "byte_length": self.byte_length,
+        }
 
 
 @dataclass
@@ -107,6 +191,22 @@ class Message:
     urls: List[URLMetadata] = field(default_factory=list)
     attachments: List[AttachmentMetadata] = field(default_factory=list)
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "subject": self.subject,
+            "from": self.from_.to_dict(),
+            "to": [addr.to_dict() for addr in self.to],
+            "cc": [addr.to_dict() for addr in self.cc],
+            "reply_to": self.reply_to,
+            "return_path": self.return_path,
+            "message_id": self.message_id,
+            "date": self.date,
+            "body_text": self.body_text,
+            "body_html_present": self.body_html_present,
+            "urls": [url.to_dict() for url in self.urls],
+            "attachments": [att.to_dict() for att in self.attachments],
+        }
+
 
 @dataclass
 class ParsedEmail:
@@ -122,3 +222,12 @@ class ParsedEmail:
             byte_length=0
         )
     )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "message": self.message.to_dict(),
+            "authentication": self.authentication.to_dict(),
+            "trace": self.trace.to_dict(),
+            "warnings": [w.to_dict() for w in self.warnings],
+            "artifact": self.artifact.to_dict(),
+        }

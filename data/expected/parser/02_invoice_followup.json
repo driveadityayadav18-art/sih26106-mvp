@@ -1,0 +1,110 @@
+{
+  "message": {
+    "subject": "Past Due Notice: Outstanding Invoice #INV-9021 Settlement Required",
+    "from": {
+      "name": "Central Billing Desk",
+      "address": "billing@procure-gov.example"
+    },
+    "to": [
+      {
+        "name": "Accounts Payable",
+        "address": "finance@victim-org.example"
+      }
+    ],
+    "cc": [],
+    "reply_to": "payment-update@aicte-payments.example",
+    "return_path": "notice@mailer-b.example",
+    "message_id": "<inv-seq-9021@mailer-b.example>",
+    "date": "2026-08-25T11:30:00+00:00",
+    "body_text": "[SYNTHETIC DEMO ARTIFACT - FOR FORENSIC INVESTIGATION TESTING ONLY]\n\nHello Accounts Team,\n\nThis is a reminder that invoice #INV-9021 remains unsettled.\nPlease review the outstanding invoice schedule and remit payment to the updated remittance account:\n\nhttps://aicte-payments.example/invoices/INV-9021.pdf\n\nDirect all inquiries to payment-update@aicte-payments.example.\n\nCentral Billing Department\n",
+    "body_html_present": false,
+    "urls": [
+      {
+        "raw": "https://aicte-payments.example/invoices/INV-9021.pdf",
+        "scheme": "https",
+        "host": "aicte-payments.example",
+        "path": "/invoices/INV-9021.pdf",
+        "query_present": false,
+        "is_https": true,
+        "parse_status": "parsed"
+      }
+    ],
+    "attachments": []
+  },
+  "authentication": {
+    "spf": {
+      "result": "fail",
+      "source": "header",
+      "timestamp": null
+    },
+    "dkim": {
+      "result": "none",
+      "source": "header",
+      "timestamp": null
+    },
+    "dmarc": {
+      "result": "fail",
+      "aligned": null,
+      "header_from_domain": "procure-gov.example",
+      "source": "header",
+      "timestamp": null
+    },
+    "raw_authentication_headers": [
+      "mx.victim-org.example; dkim=none; spf=fail (mx.victim-org.example: domain of notice@mailer-b.example does not designate 198.51.100.25 as permitted sender) smtp.mailfrom=notice@mailer-b.example; dmarc=fail header.from=procure-gov.example"
+    ]
+  },
+  "trace": {
+    "hops": [
+      {
+        "index": 1,
+        "raw": "from internal-dispatcher.example (node-auth [198.51.100.15]) by mailer-b.example [198.51.100.25] with ESMTP id 8H3xL992 for <finance@victim-org.example>; Fri, 25 Aug 2026 11:29:55 +0000",
+        "from_host": "internal-dispatcher.example",
+        "from_ip": "198.51.100.15",
+        "by_host": "mailer-b.example",
+        "by_ip": "198.51.100.25",
+        "with_protocol": "ESMTP",
+        "timestamp": "2026-08-25T11:29:55+00:00",
+        "parse_status": "parsed",
+        "trust": "unknown"
+      },
+      {
+        "index": 2,
+        "raw": "from mailer-b.example (mailer-b.example [198.51.100.25]) by relay-in.victim-org.example [203.0.113.50] with ESMTPS id 7K2mP441z for <finance@victim-org.example>; Fri, 25 Aug 2026 11:30:04 +0000",
+        "from_host": "mailer-b.example",
+        "from_ip": "198.51.100.25",
+        "by_host": "relay-in.victim-org.example",
+        "by_ip": "203.0.113.50",
+        "with_protocol": "ESMTPS",
+        "timestamp": "2026-08-25T11:30:04+00:00",
+        "parse_status": "parsed",
+        "trust": "unknown"
+      }
+    ],
+    "earliest_reliable_observable": "Received hop 1",
+    "limitations": [
+      "Received headers are observable message-header evidence and are not independently verified."
+    ]
+  },
+  "warnings": [
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 1 contains private or reserved IP 198.51.100.15."
+    },
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 1 contains private or reserved IP 198.51.100.25."
+    },
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 2 contains private or reserved IP 198.51.100.25."
+    },
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 2 contains private or reserved IP 203.0.113.50."
+    }
+  ],
+  "artifact": {
+    "sha256": "784cc88e215ddf14d1b14f285608ff091c4f7f180710047dc64195d4060f6908",
+    "byte_length": 1483
+  }
+}

@@ -1,0 +1,33 @@
+From: "AICTE Accounts" <accounts@aicte-demo.example>
+To: "Finance Team" <finance@victim-org.example>
+Reply-To: payment-update@aicte-payments.example
+Return-Path: <bounce@mailer-a.example>
+Subject: URGENT: Update vendor bank details for pending disbursement
+Message-ID: <demo-184@mailer-a.example>
+Date: Fri, 25 Aug 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Authentication-Results: mx.victim-org.example;
+ dkim=none;
+ spf=fail (mx.victim-org.example: domain of bounce@mailer-a.example does not designate 198.51.100.25 as permitted sender) smtp.mailfrom=bounce@mailer-a.example;
+ dmarc=fail (p=reject sp=reject) header.from=aicte-demo.example
+Received: from mailer-a.example (mailer-a.example [198.51.100.25])
+ by relay-in.victim-org.example [203.0.113.50] with ESMTPS id 4V8xK901z
+ for <finance@victim-org.example>; Fri, 25 Aug 2026 10:00:02 +0000
+Received: from client-workstation.example (client-node [198.51.100.10])
+ by mailer-a.example [198.51.100.25] with ESMTP id 9B7cL123
+ for <finance@victim-org.example>; Fri, 25 Aug 2026 09:59:58 +0000
+
+[SYNTHETIC DEMO ARTIFACT - FOR FORENSIC INVESTIGATION TESTING ONLY]
+
+Attention Accounts Payable,
+
+Due to a banking reconciliation audit, our primary disbursement account has changed.
+Please update our beneficiary banking details immediately to prevent settlement cancellation:
+
+https://aicte-payments.example/portal/update?ref=SIH26106-VEND
+
+Failure to update before 17:00 IST will result in delayed disbursement.
+
+Regards,
+AICTE Accounts Division

@@ -1,10 +1,10 @@
 import re
 import ipaddress
-
 from email import policy
 from email.header import decode_header
 from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
+from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 from .models import (
@@ -14,9 +14,36 @@ from .models import (
     EmailAddress,
     ParsedEmail,
     ReceivedHop,
+    URLMetadata,
     Warning,
 )
 from ..evidence.hashing import calculate_sha256, get_byte_length
+
+
+class _SafeHTMLTextExtractor(HTMLParser):
+    """
+    Safely extract readable text and href links from HTML markup.
+    Never executes JavaScript, renders CSS, or fetches resources.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.text_chunks = []
+        self.extracted_urls = []
+
+    def handle_data(self, data):
+        cleaned = data.strip()
+        if cleaned:
+            self.text_chunks.append(cleaned)
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            for attr_name, attr_val in attrs:
+                if attr_name.lower() == "href" and attr_val:
+                    self.extracted_urls.append(attr_val.strip())
+
+    def get_text(self) -> str:
+        return " ".join(self.text_chunks)
 
 
 class EmailParser:
@@ -274,9 +301,14 @@ class EmailParser:
             []
         )
 
-        # Preserve the raw authentication headers.
+        dkim_sig_headers = message.get_all(
+            "DKIM-Signature",
+            []
+        )
+
+        # Preserve raw authentication headers including DKIM signatures
         result.authentication.raw_authentication_headers = (
-            auth_headers + received_spf_headers
+            auth_headers + received_spf_headers + [f"DKIM-Signature: {sig}" for sig in dkim_sig_headers]
         )
 
         if not auth_headers and not received_spf_headers:
@@ -357,6 +389,13 @@ class EmailParser:
                         header_from_match.group(1)
                     )
 
+                # Check if alignment was explicitly observed
+                aligned = None
+                if re.search(r"\b(aligned=yes|alignment=pass|aspf=pass|adkim=pass)\b", header_lower):
+                    aligned = True
+                elif re.search(r"\b(aligned=no|alignment=fail|aspf=fail|adkim=fail)\b", header_lower):
+                    aligned = False
+
                 result.authentication.dmarc = (
                     DMARCResult(
                         result=dmarc_match.group(1),
@@ -364,7 +403,7 @@ class EmailParser:
                         header_from_domain=(
                             header_from_domain
                         ),
-                        aligned=None,
+                        aligned=aligned,
                     )
                 )
 
@@ -470,9 +509,12 @@ class EmailParser:
         )
 
         try:
-            # -------------------------------------------------
-            # Extract FROM host/IP
-            # -------------------------------------------------
+            # Locate by_match and from_match
+            by_match = re.search(
+                r"\bby\s+([^\s(]+)",
+                raw_header,
+                re.IGNORECASE,
+            )
 
             from_match = re.search(
                 r"\bfrom\s+([^\s(]+)",
@@ -480,37 +522,38 @@ class EmailParser:
                 re.IGNORECASE,
             )
 
+            # If by occurs before from, from is inside a comment/subclause (e.g. "by host (Postfix, from userid 0)")
+            if by_match and from_match and by_match.start() < from_match.start():
+                from_match = None
+
             if from_match:
                 hop.from_host = from_match.group(1)
 
-                from_ip_match = re.search(
-                    r"\[([0-9A-Fa-f:.]+)\]",
-                    raw_header[from_match.end():],
+                # Bound from_ip search strictly to the section before "by" (if present)
+                from_section_end = (
+                    by_match.start()
+                    if by_match and by_match.start() > from_match.start()
+                    else len(raw_header)
                 )
-
-                if from_ip_match:
-                    hop.from_ip = from_ip_match.group(1)
-
-            # -------------------------------------------------
-            # Extract BY host/IP
-            # -------------------------------------------------
-
-            by_match = re.search(
-                r"\bby\s+([^\s(]+)",
-                raw_header,
-                re.IGNORECASE,
-            )
+                from_section = raw_header[from_match.end():from_section_end]
+                hop.from_ip = self._extract_ip_candidate(from_section)
 
             if by_match:
                 hop.by_host = by_match.group(1)
 
-                by_ip_match = re.search(
-                    r"\[([0-9A-Fa-f:.]+)\]",
+                # Bound by_ip search to the section before "with" or ";"
+                with_or_semi = re.search(
+                    r"(\bwith\b|;)",
                     raw_header[by_match.end():],
+                    re.IGNORECASE,
                 )
-
-                if by_ip_match:
-                    hop.by_ip = by_ip_match.group(1)
+                by_section_end = (
+                    (by_match.end() + with_or_semi.start())
+                    if with_or_semi
+                    else len(raw_header)
+                )
+                by_section = raw_header[by_match.end():by_section_end]
+                hop.by_ip = self._extract_ip_candidate(by_section)
 
             # -------------------------------------------------
             # Extract protocol
@@ -614,6 +657,33 @@ class EmailParser:
             )
 
             return hop
+
+    def _extract_ip_candidate(self, section: str):
+        """
+        Extract IP candidate from bracketed [ ] or parenthesized ( ) clauses.
+        Supports IPv4, IPv6, and IPv6: prefixes.
+        """
+        if not section:
+            return None
+
+        matches = re.findall(
+            r"[\(\[]\s*(?:IPv6:)?([0-9A-Fa-f:.]+)\s*[\)\]]",
+            section,
+            re.IGNORECASE,
+        )
+
+        for cand in matches:
+            cand_clean = cand.strip()
+            try:
+                ipaddress.ip_address(cand_clean)
+                return cand_clean
+            except ValueError:
+                continue
+
+        if matches:
+            return matches[0].strip()
+
+        return None
 
     def _check_received_ip(
         self,
@@ -799,6 +869,7 @@ class EmailParser:
         """
 
         plain_text_parts = []
+        html_parts = []
         html_present = False
 
         for part in message.walk():
@@ -834,6 +905,19 @@ class EmailParser:
 
             if content_type == "text/html":
                 html_present = True
+                try:
+                    html_content = part.get_content()
+                    if isinstance(html_content, str):
+                        html_parts.append(html_content)
+                    elif isinstance(html_content, bytes):
+                        html_parts.append(html_content.decode("utf-8", errors="replace"))
+                except Exception:
+                    try:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            html_parts.append(payload.decode("utf-8", errors="replace"))
+                    except Exception:
+                        pass
 
             # -------------------------------------------------
             # Plain text body
@@ -846,28 +930,49 @@ class EmailParser:
 
                     if isinstance(content, str):
                         plain_text_parts.append(content)
+                    elif isinstance(content, bytes):
+                        plain_text_parts.append(content.decode("utf-8", errors="replace"))
 
                 except Exception:
-                    result.warnings.append(
-                        Warning(
-                            code="BODY_DECODE_WARNING",
-                            message=(
-                                "Plain-text body could not "
-                                "be decoded."
-                            ),
+                    try:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            plain_text_parts.append(payload.decode("utf-8", errors="replace"))
+                    except Exception:
+                        result.warnings.append(
+                            Warning(
+                                code="BODY_DECODE_WARNING",
+                                message=(
+                                    "Plain-text body could not "
+                                    "be decoded."
+                                ),
+                            )
                         )
-                    )
 
         result.message.body_html_present = html_present
+
+        html_urls = []
+        if html_parts:
+            combined_html = "\n".join(html_parts)
+            try:
+                html_extractor = _SafeHTMLTextExtractor()
+                html_extractor.feed(combined_html)
+                html_urls = html_extractor.extracted_urls
+                if not plain_text_parts:
+                    extracted_text = html_extractor.get_text()
+                    if extracted_text:
+                        result.message.body_text = extracted_text
+            except Exception:
+                pass
 
         if plain_text_parts:
             result.message.body_text = "\n".join(
                 plain_text_parts
             )
-
-        elif html_present:
-            # We deliberately do not render HTML.
+        elif not result.message.body_text:
             result.message.body_text = None
+
+        self._pending_html_urls = html_urls
 
     # =========================================================
     # ATTACHMENT METADATA
@@ -944,7 +1049,7 @@ class EmailParser:
 
     def _extract_urls(self, result: ParsedEmail):
         """
-        Extract URL metadata from the plain-text body.
+        Extract URL metadata from the plain-text body and HTML links.
 
         URLs are only parsed as metadata.
         They are never fetched or followed.
@@ -957,18 +1062,27 @@ class EmailParser:
 
         found_urls = re.findall(pattern, body)
 
+        # Include URLs found from HTML href attributes
+        pending_html = getattr(self, "_pending_html_urls", [])
+        for u in pending_html:
+            if u.startswith("http://") or u.startswith("https://"):
+                found_urls.append(u)
+
+        seen_raw = set()
         for raw_url in found_urls:
             # Remove punctuation that may be attached to a URL
             # in normal sentences.
             raw_url = raw_url.rstrip(".,);!?]}>")
+
+            if raw_url in seen_raw:
+                continue
+            seen_raw.add(raw_url)
 
             try:
                 parsed = urlsplit(raw_url)
 
                 if not parsed.scheme or not parsed.netloc:
                     raise ValueError
-
-                from .models import URLMetadata
 
                 result.message.urls.append(
                     URLMetadata(
