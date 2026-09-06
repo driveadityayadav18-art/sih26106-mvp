@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
@@ -52,15 +53,18 @@ try:
 except Exception:
     groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY") or "")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="TraceShield MVP Backend",
     version="0.1.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    init_db()
 
 # Enable CORS so frontend on localhost:3000 can talk to it
 origins = [
