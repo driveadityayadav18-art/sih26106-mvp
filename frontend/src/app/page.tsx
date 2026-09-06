@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { ObservableUrlTable } from "@/components/observable-url-table";
+import { RelayTimeline } from "@/components/dashboard/RelayTimeline";
 import {
   RadialBarChart,
   RadialBar,
@@ -1093,6 +1094,13 @@ export default function Home() {
                 </div>
               )}
             </section>
+
+            {/* Observable Relay Timeline */}
+            <RelayTimeline
+              hops={caseData.trace?.hops || caseData.message?.trace?.hops}
+              earliestReliableObservable={caseData.trace?.earliest_reliable_observable}
+              limitations={caseData.trace?.limitations}
+            />
 
             {/* Campaign Correlation & Threat Graph */}
             <ThreatGraph

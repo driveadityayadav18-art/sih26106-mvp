@@ -3,6 +3,27 @@ export interface FromAddress {
   address: string | null;
 }
 
+export interface ReceivedHop {
+  index: number;
+  raw: string;
+  from_host?: string | null;
+  from_ip?: string | null;
+  by_host?: string | null;
+  by_ip?: string | null;
+  with_protocol?: string | null;
+  timestamp?: string | null;
+  parse_status?: string;
+  trust?: string;
+}
+
+export type TraceHop = ReceivedHop;
+
+export interface TraceData {
+  hops?: ReceivedHop[];
+  earliest_reliable_observable?: string | null;
+  limitations?: string[];
+}
+
 export interface MessageData {
   from?: FromAddress | null;
   reply_to?: string | null;
@@ -18,6 +39,7 @@ export interface MessageData {
     dmarc?: string | null;
     compauth?: string | null;
   } | null;
+  trace?: TraceData;
 }
 
 export interface ReasonCode {
@@ -103,4 +125,6 @@ export interface CaseAnalysis {
   ai_review?: AIReviewData | null;
   infrastructure?: InfrastructureData;
   campaign?: CampaignData;
+  trace?: TraceData;
 }
+
