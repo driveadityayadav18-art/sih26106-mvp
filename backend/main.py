@@ -2,15 +2,23 @@ import hashlib
 import json
 import os
 import re
+import sys
 from email import policy
 from email.parser import BytesParser
 from email.utils import parseaddr
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
+
+# Ensure local backend and root paths are resolvable
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(backend_dir)
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 try:
     from dotenv import load_dotenv
-    backend_dir = os.path.dirname(os.path.abspath(__file__))
     load_dotenv(os.path.join(backend_dir, ".env"))
     load_dotenv(os.path.join(backend_dir, ".env.local"), override=True)
     load_dotenv()
@@ -20,6 +28,19 @@ except Exception:
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
+
+# Person 2 & 3 integrations: Forensic Parser and Threat Detection
+from backend.parser.email_parser import EmailParser
+from backend.parser.models import (
+    ParsedEmail,
+    Message,
+    EmailAddress,
+    URLMetadata,
+    AttachmentMetadata,
+)
+from backend.evidence.hashing import calculate_sha256, get_byte_length
+from backend.detection.detection import ThreatDetector
+from backend.detection.context import DetectionContext, ReusedIndicator
 
 # Initialize Groq client
 try:
@@ -64,19 +85,16 @@ def _load_demo_intel() -> Dict[str, Any]:
     return {}
 
 
-def parse_email(raw_bytes: bytes) -> Dict[str, Any]:
+def _fallback_parse_email(raw_bytes: bytes) -> Dict[str, Any]:
     """
     Parses raw .eml email bytes using Python's standard email library.
-    Extracts headers (from, reply_to, return_path, subject) and plain text body URLs.
-    Does not execute, fetch URLs, or modify the raw bytes.
+    Fallback if forensic parser encounters an unexpected unrecoverable format.
     """
     try:
         msg = BytesParser(policy=policy.default).parsebytes(raw_bytes)
     except Exception:
-        # Fallback if bytes parser encounters malformed input
         msg = BytesParser().parsebytes(raw_bytes)
 
-    # 1. From (sender's email address and display name if present)
     from_header = str(msg.get("From", "") or "")
     display_name, email_address = parseaddr(from_header)
     from_data = {
@@ -84,23 +102,18 @@ def parse_email(raw_bytes: bytes) -> Dict[str, Any]:
         "address": email_address if email_address else (from_header if from_header else None),
     }
 
-    # 2. Reply-To
     reply_to_header = str(msg.get("Reply-To", "") or "")
     _, reply_to_addr = parseaddr(reply_to_header)
     reply_to = reply_to_addr if reply_to_addr else (reply_to_header if reply_to_header else None)
 
-    # 3. Return-Path
     return_path_header = str(msg.get("Return-Path", "") or "")
     _, return_path_addr = parseaddr(return_path_header)
     return_path = return_path_addr if return_path_addr else (return_path_header if return_path_header else None)
 
-    # 4. Subject
     subject_raw = msg.get("Subject")
     subject = str(subject_raw) if subject_raw is not None else None
 
-    # 5. Extract Plain Text Body & URLs
     body_text_parts: List[str] = []
-
     if msg.is_multipart():
         for part in msg.walk():
             content_type = part.get_content_type()
@@ -129,12 +142,9 @@ def parse_email(raw_bytes: bytes) -> Dict[str, Any]:
                 body_text_parts.append(payload.decode(errors="replace"))
 
     body_text = "\n".join(body_text_parts)
-
-    # Find unique URLs in plain text body (without fetching)
     found_urls = URL_REGEX.findall(body_text)
     urls = list(dict.fromkeys(found_urls))
 
-    # 6. Extract SPF and DKIM indicators if present in headers
     auth_results_header = str(msg.get("Authentication-Results", "") or "").lower()
     received_spf_header = str(msg.get("Received-SPF", "") or "").lower()
 
@@ -163,6 +173,182 @@ def parse_email(raw_bytes: bytes) -> Dict[str, Any]:
             "dkim": dkim_val,
         },
     }
+
+
+def _dict_to_parsed_email(data: Dict[str, Any]) -> ParsedEmail:
+    """Converts normalized email dictionary to typed ParsedEmail object for ThreatDetector."""
+    if isinstance(data.get("_parsed_obj"), ParsedEmail):
+        return data["_parsed_obj"]
+
+    parsed = ParsedEmail()
+    msg = parsed.message
+
+    from_val = data.get("from")
+    if isinstance(from_val, dict):
+        msg.from_.name = from_val.get("name")
+        msg.from_.address = from_val.get("address")
+    elif isinstance(from_val, str):
+        msg.from_.address = from_val
+
+    msg.reply_to = data.get("reply_to")
+    msg.return_path = data.get("return_path")
+    msg.subject = data.get("subject")
+    msg.date = data.get("date")
+    msg.body_text = data.get("body_text") or data.get("body") or ""
+
+    urls = data.get("urls") or []
+    for u in urls:
+        if isinstance(u, str):
+            host = _extract_url_domain(u)
+            parsed_path = ""
+            try:
+                parsed_path = urlparse(u).path or ""
+            except Exception:
+                pass
+            msg.urls.append(
+                URLMetadata(
+                    raw=u,
+                    scheme=urlparse(u).scheme if "://" in u else "http",
+                    host=host,
+                    path=parsed_path,
+                    parse_status="parsed" if host else "unparsed",
+                )
+            )
+        elif isinstance(u, dict):
+            msg.urls.append(
+                URLMetadata(
+                    raw=u.get("raw", ""),
+                    scheme=u.get("scheme"),
+                    host=u.get("host"),
+                    path=u.get("path"),
+                    parse_status=u.get("parse_status", "parsed"),
+                )
+            )
+
+    for att in data.get("attachments") or []:
+        if isinstance(att, dict):
+            msg.attachments.append(
+                AttachmentMetadata(
+                    filename=att.get("filename"),
+                    content_type=att.get("content_type"),
+                    size_bytes=att.get("size_bytes", 0),
+                    sha256=att.get("sha256"),
+                    parse_status=att.get("parse_status", "parsed"),
+                )
+            )
+
+    auth_data = data.get("authentication") or {}
+    spf_res = data.get("spf") or (auth_data.get("spf") if isinstance(auth_data, dict) else None)
+    if isinstance(spf_res, dict):
+        spf_res = spf_res.get("result")
+    if isinstance(spf_res, str):
+        parsed.authentication.spf.result = spf_res.lower()
+
+    dkim_res = data.get("dkim") or (auth_data.get("dkim") if isinstance(auth_data, dict) else None)
+    if isinstance(dkim_res, dict):
+        dkim_res = dkim_res.get("result")
+    if isinstance(dkim_res, str):
+        parsed.authentication.dkim.result = dkim_res.lower()
+
+    dmarc_res = data.get("dmarc") or (auth_data.get("dmarc") if isinstance(auth_data, dict) else None)
+    if isinstance(dmarc_res, dict):
+        dmarc_res = dmarc_res.get("result")
+    if isinstance(dmarc_res, str):
+        parsed.authentication.dmarc.result = dmarc_res.lower()
+
+    return parsed
+
+
+def parse_email(raw_bytes: bytes) -> Dict[str, Any]:
+    """
+    Parses raw .eml email bytes using Person 2's RFC-compliant EmailParser.
+    Returns normalized dictionary representation while preserving forensic fields.
+    """
+    try:
+        parsed_obj = EmailParser().parse(raw_bytes)
+        return {
+            "from": {
+                "name": parsed_obj.message.from_.name,
+                "address": parsed_obj.message.from_.address,
+            },
+            "reply_to": parsed_obj.message.reply_to,
+            "return_path": parsed_obj.message.return_path,
+            "subject": parsed_obj.message.subject,
+            "date": parsed_obj.message.date,
+            "body_text": parsed_obj.message.body_text,
+            "urls": [u.raw for u in parsed_obj.message.urls],
+            "attachments": [a.to_dict() for a in parsed_obj.message.attachments],
+            "spf": parsed_obj.authentication.spf.result,
+            "dkim": parsed_obj.authentication.dkim.result,
+            "dmarc": parsed_obj.authentication.dmarc.result,
+            "authentication": {
+                "spf": parsed_obj.authentication.spf.result,
+                "dkim": parsed_obj.authentication.dkim.result,
+                "dmarc": parsed_obj.authentication.dmarc.result,
+            },
+            "trace": parsed_obj.trace.to_dict(),
+            "warnings": [w.to_dict() for w in parsed_obj.warnings],
+            "_parsed_obj": parsed_obj,
+        }
+    except Exception:
+        return _fallback_parse_email(raw_bytes)
+
+
+def _build_detection_context(current_case_id: str, case_db: List[Dict[str, Any]]) -> DetectionContext:
+    """Builds DetectionContext from existing case_db to detect reused indicators."""
+    reused: List[ReusedIndicator] = []
+    for c in case_db:
+        c_id = c.get("case_id")
+        if not c_id or c_id == current_case_id:
+            continue
+        c_msg = c.get("message") or {}
+
+        c_from = _extract_email_domain(c_msg.get("from"))
+        if c_from:
+            reused.append(ReusedIndicator(
+                indicator_type="domain",
+                value=c_from,
+                related_case_ids=[c_id],
+                source=f"case_db:{c_id}.message.from",
+            ))
+
+        c_reply = _extract_email_domain(c_msg.get("reply_to"))
+        if c_reply:
+            reused.append(ReusedIndicator(
+                indicator_type="domain",
+                value=c_reply,
+                related_case_ids=[c_id],
+                source=f"case_db:{c_id}.message.reply_to",
+            ))
+
+        for u in c_msg.get("urls") or []:
+            u_str = u if isinstance(u, str) else (u.get("raw", "") if isinstance(u, dict) else "")
+            if u_str:
+                reused.append(ReusedIndicator(
+                    indicator_type="url",
+                    value=u_str,
+                    related_case_ids=[c_id],
+                    source=f"case_db:{c_id}.message.urls",
+                ))
+                u_host = _extract_url_domain(u_str)
+                if u_host:
+                    reused.append(ReusedIndicator(
+                        indicator_type="domain",
+                        value=u_host,
+                        related_case_ids=[c_id],
+                        source=f"case_db:{c_id}.message.urls.host",
+                    ))
+
+        for att in c_msg.get("attachments") or []:
+            if isinstance(att, dict) and att.get("sha256"):
+                reused.append(ReusedIndicator(
+                    indicator_type="attachment_sha256",
+                    value=att["sha256"],
+                    related_case_ids=[c_id],
+                    source=f"case_db:{c_id}.message.attachments.sha256",
+                ))
+
+    return DetectionContext(reused_indicators=reused, current_case_id=current_case_id)
 
 
 TRUSTED_DOMAINS: Set[str] = {
@@ -237,28 +423,32 @@ def _extract_url_domain(url_val: str) -> Optional[str]:
         return None
 
 
-def analyze_risk(parsed_email: Dict[str, Any]) -> Dict[str, Any]:
+def analyze_risk(parsed_email: Union[ParsedEmail, Dict[str, Any]], context: Optional[DetectionContext] = None) -> Dict[str, Any]:
     """
     Analyzes normalized parsed email signals and calculates an explainable risk assessment.
-    
-    Deterministic Rules:
-    1. REPLY_TO_MISMATCH / REPLY_TO_ESP_MISMATCH:
-       - If Reply-To domain differs from From domain:
-         - If SPF or DKIM is 'pass' (authenticated sender / ESP relay):
-           adds +5 points (lower weight), emits REPLY_TO_ESP_MISMATCH with authenticated ESP relay evidence.
-         - If SPF and DKIM are 'fail' or 'none':
-           adds +50 points, emits REPLY_TO_MISMATCH.
-    2. URGENT_SUBJECT (+20): Subject contains the word 'URGENT' (case-insensitive).
-    3. SUSPICIOUS_URL (+20 for untrusted external domains):
-       - If URL belongs to a known trusted domain (e.g., youtube.com, twitter.com, linkedin.com, techcrunch.com),
-         no penalty is added.
-       - If URL domain differs from From domain and is unknown/phishing-like, adds +20 points, emits SUSPICIOUS_URL.
-    
-    Risk Bands:
-    - HIGH: score >= 70
-    - REVIEW: 30 <= score < 70
-    - LOW: score < 30
+    If a ParsedEmail object is provided (or _parsed_obj in dict), uses Person 3's ThreatDetector heuristic engine.
+    Also retains fallback support for prototype normalized dict structures.
     """
+    if isinstance(parsed_email, ParsedEmail) or (isinstance(parsed_email, dict) and isinstance(parsed_email.get("_parsed_obj"), ParsedEmail)):
+        obj = parsed_email if isinstance(parsed_email, ParsedEmail) else parsed_email["_parsed_obj"]
+        detector = ThreatDetector()
+        res = detector.analyze(obj, context=context)
+        formatted_reasons = []
+        for rc in res.get("reason_codes", []):
+            formatted_reasons.append({
+                "code": rc.get("code", ""),
+                "title": rc.get("message") or rc.get("title", ""),
+                "message": rc.get("message") or rc.get("title", ""),
+                "evidence_path": rc.get("evidence_path", ""),
+                "weight": rc.get("weight", 0),
+            })
+        return {
+            "score": res.get("score", 0),
+            "band": res.get("band", "LOW"),
+            "reason_codes": formatted_reasons,
+            "limitations": res.get("limitations", []),
+        }
+
     score = 0
     reason_codes: List[Dict[str, str]] = []
 
@@ -557,28 +747,79 @@ async def health_check():
 @app.post("/api/v1/cases")
 async def create_case(file: UploadFile = File(...)):
     content = await file.read()
-    calculated_hash = hashlib.sha256(content).hexdigest()
-    
-    # 1. Run parser
-    parsed_message = parse_email(content)
-    
-    # 2. Run risk analyzer
-    risk_assessment = analyze_risk(parsed_message)
-    
-    # 3. Run enrich_and_correlate
+    calculated_hash = calculate_sha256(content)
+    byte_len = get_byte_length(content)
+
+    # 1. Run Person 2 Forensic Parser
+    parser = EmailParser()
+    try:
+        parsed_email_obj = parser.parse(content)
+    except Exception:
+        parsed_email_obj = ParsedEmail()
+
+    # 2. Extract message dictionary for frontend and enrichment
+    parsed_message = {
+        "from": {
+            "name": parsed_email_obj.message.from_.name,
+            "address": parsed_email_obj.message.from_.address,
+        },
+        "reply_to": parsed_email_obj.message.reply_to,
+        "return_path": parsed_email_obj.message.return_path,
+        "subject": parsed_email_obj.message.subject,
+        "date": parsed_email_obj.message.date,
+        "body_text": parsed_email_obj.message.body_text,
+        "urls": [u.raw for u in parsed_email_obj.message.urls],
+        "attachments": [a.to_dict() for a in parsed_email_obj.message.attachments],
+        "spf": parsed_email_obj.authentication.spf.result,
+        "dkim": parsed_email_obj.authentication.dkim.result,
+        "dmarc": parsed_email_obj.authentication.dmarc.result,
+        "authentication": {
+            "spf": parsed_email_obj.authentication.spf.result,
+            "dkim": parsed_email_obj.authentication.dkim.result,
+            "dmarc": parsed_email_obj.authentication.dmarc.result,
+        },
+    }
+
+    # 3. Build DetectionContext for cross-case indicator reuse
+    case_id = f"TS-DEMO-{len(case_db) + 1:03d}"
+    detection_context = _build_detection_context(case_id, case_db)
+
+    # 4. Run Person 3 Threat Detector Heuristics Engine
+    detector = ThreatDetector()
+    threat_result = detector.analyze(parsed_email_obj, detection_context)
+
+    # Format reason codes for frontend UI (ensuring both 'title' and 'message')
+    formatted_reasons = []
+    for rc in threat_result.get("reason_codes", []):
+        formatted_reasons.append({
+            "code": rc.get("code", ""),
+            "title": rc.get("message") or rc.get("title", ""),
+            "message": rc.get("message") or rc.get("title", ""),
+            "evidence_path": rc.get("evidence_path", ""),
+            "weight": rc.get("weight", 0),
+        })
+
+    risk_assessment = {
+        "score": threat_result.get("score", 0),
+        "band": threat_result.get("band", "LOW"),
+        "reason_codes": formatted_reasons,
+        "limitations": threat_result.get("limitations", []),
+    }
+
+    # 5. Run Intelligence Enrichment & Campaign Correlation
     enrichment = enrich_and_correlate(parsed_message, case_db)
 
-    # 4. Tier 2 LLM Review (if risk score >= 70)
+    # 6. Tier 2 LLM Review (if risk score >= 70)
     ai_review = None
     if risk_assessment.get("score", 0) >= 70:
         ai_review = await tier_2_llm_review(parsed_message, risk_assessment)
-    
-    # 5. Assemble final CaseAnalysis JSON
-    case_id = f"TS-DEMO-{len(case_db) + 1:03d}"
+
+    # 7. Assemble final CaseAnalysis record matching schema
     case_record = {
         "case_id": case_id,
         "artifact": {
             "sha256": calculated_hash,
+            "byte_length": byte_len,
             "is_demo_data": True,
         },
         "message": parsed_message,
@@ -586,9 +827,12 @@ async def create_case(file: UploadFile = File(...)):
         "ai_review": ai_review,
         "infrastructure": enrichment["infrastructure"],
         "campaign": enrichment["campaign"],
+        "trace": parsed_email_obj.trace.to_dict(),
+        "warnings": [w.to_dict() for w in parsed_email_obj.warnings],
+        "authentication": parsed_email_obj.authentication.to_dict(),
     }
-    
-    # 6. Append to in-memory case_db for subsequent correlation
+
+    # 8. Append to in-memory case_db for subsequent correlation
     case_db.append(case_record)
-    
+
     return case_record
