@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Shield, Plus } from "lucide-react";
+import { Shield, Plus, Download } from "lucide-react";
 import { GradientButton } from "@/components/ui/gradient-button";
 
 interface NavbarProps {
   apiBaseUrl?: string;
+  activeCaseId?: string;
   onNewScan?: () => void;
 }
 
@@ -76,6 +77,7 @@ function BackendStatusPill({
 
 export function Navbar({
   apiBaseUrl = "http://localhost:8000",
+  activeCaseId,
   onNewScan,
 }: NavbarProps) {
   const formattedHost = apiBaseUrl.replace(/^https?:\/\//, "");
@@ -107,6 +109,25 @@ export function Navbar({
       <div className="flex items-center gap-3">
         {/* Backend Status Pill — real health check */}
         <BackendStatusPill apiBaseUrl={apiBaseUrl} formattedHost={formattedHost} />
+
+        {/* Download Forensic Report Button */}
+        {activeCaseId && (
+          <button
+            onClick={() => {
+              window.open(
+                `${apiBaseUrl}/api/v1/cases/${encodeURIComponent(activeCaseId)}/report?format=html`,
+                "_blank",
+                "noopener,noreferrer"
+              );
+            }}
+            className="h-9 px-3.5 rounded-lg bg-[#141416] hover:bg-[#2A2118] border border-[#D47E30]/50 hover:border-[#D47E30] text-xs font-sans font-semibold text-[#FDFBD4] hover:text-white transition-all duration-150 flex items-center gap-1.5 cursor-pointer shadow-xs"
+            title="Download Forensic Report (HTML)"
+          >
+            <Download className="w-3.5 h-3.5 text-[#D47E30]" />
+            <span className="hidden sm:inline">Download Forensic Report</span>
+            <span className="sm:hidden">Report</span>
+          </button>
+        )}
 
         {/* Primary Action Button */}
         <GradientButton

@@ -25,7 +25,7 @@ dist/
 *.tsbuildinfo
 *.eslintcache
 
-# Python
+# Python & Databases
 __pycache__/
 */__pycache__/
 *.py[cod]
@@ -41,6 +41,12 @@ venv.bak/
 *.egg-info/
 .installed.cfg
 *.egg
+*.db
+*.sqlite
+*.sqlite3
+data/reports/
+data/artifacts/*.eml
+backend/data/artifacts/*.eml
 
 # Testing & logs
 coverage/

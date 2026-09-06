@@ -1,13 +1,9 @@
-import hashlib
 import ipaddress
 import json
 import os
 import re
 import sys
-from email import policy
-from email.parser import BytesParser
-from email.utils import parseaddr
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 # Ensure local backend and root paths are resolvable
@@ -26,7 +22,7 @@ try:
 except Exception:
     pass
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 
@@ -34,14 +30,21 @@ from groq import Groq
 from backend.parser.email_parser import EmailParser
 from backend.parser.models import (
     ParsedEmail,
-    Message,
-    EmailAddress,
     URLMetadata,
     AttachmentMetadata,
 )
 from backend.evidence.hashing import calculate_sha256, get_byte_length
 from backend.detection.detection import ThreatDetector
 from backend.detection.context import DetectionContext, ReusedIndicator
+try:
+    from db import init_db, save_case, get_case, list_cases, get_all_cases, count_cases, clear_cases, get_max_case_number
+except ImportError:
+    from backend.db import init_db, save_case, get_case, list_cases, get_all_cases, count_cases, clear_cases, get_max_case_number
+
+try:
+    from reporting.report_generator import generate_markdown_report, generate_html_report
+except ImportError:
+    from backend.reporting.report_generator import generate_markdown_report, generate_html_report
 
 # Initialize Groq client
 try:
@@ -53,6 +56,11 @@ app = FastAPI(
     title="TraceShield MVP Backend",
     version="0.1.0",
 )
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_db()
 
 # Enable CORS so frontend on localhost:3000 can talk to it
 origins = [
@@ -68,11 +76,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory case storage for prototype correlation
+# Deprecated in-memory store; SQLite via db.py is the primary source of truth.
+# Retained as an in-memory shadow for backward-compatible module references.
 case_db: List[Dict[str, Any]] = []
 
 URL_REGEX = re.compile(r"https?://[^\s<>\"')]+", re.IGNORECASE)
 DEMO_INTEL_PATH = os.path.join(os.path.dirname(__file__), "data", "demo_intel.json")
+ARTIFACTS_DIR = os.environ.get(
+    "ARTIFACTS_DIR",
+    os.path.join(parent_dir, "data", "artifacts"),
+)
 
 
 def _load_demo_intel() -> Dict[str, Any]:
@@ -86,219 +99,13 @@ def _load_demo_intel() -> Dict[str, Any]:
     return {}
 
 
-def _fallback_parse_email(raw_bytes: bytes) -> Dict[str, Any]:
-    """
-    Parses raw .eml email bytes using Python's standard email library.
-    Fallback if forensic parser encounters an unexpected unrecoverable format.
-    """
-    try:
-        msg = BytesParser(policy=policy.default).parsebytes(raw_bytes)
-    except Exception:
-        msg = BytesParser().parsebytes(raw_bytes)
 
-    from_header = str(msg.get("From", "") or "")
-    display_name, email_address = parseaddr(from_header)
-    from_data = {
-        "name": display_name if display_name else None,
-        "address": email_address if email_address else (from_header if from_header else None),
-    }
-
-    reply_to_header = str(msg.get("Reply-To", "") or "")
-    _, reply_to_addr = parseaddr(reply_to_header)
-    reply_to = reply_to_addr if reply_to_addr else (reply_to_header if reply_to_header else None)
-
-    return_path_header = str(msg.get("Return-Path", "") or "")
-    _, return_path_addr = parseaddr(return_path_header)
-    return_path = return_path_addr if return_path_addr else (return_path_header if return_path_header else None)
-
-    subject_raw = msg.get("Subject")
-    subject = str(subject_raw) if subject_raw is not None else None
-
-    body_text_parts: List[str] = []
-    if msg.is_multipart():
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            content_disposition = str(part.get("Content-Disposition", "") or "")
-            if content_type == "text/plain" and "attachment" not in content_disposition.lower():
-                try:
-                    payload = part.get_content()
-                    if isinstance(payload, str):
-                        body_text_parts.append(payload)
-                    elif isinstance(payload, bytes):
-                        body_text_parts.append(payload.decode(errors="replace"))
-                except Exception:
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        body_text_parts.append(payload.decode(errors="replace"))
-    else:
-        try:
-            payload = msg.get_content()
-            if isinstance(payload, str):
-                body_text_parts.append(payload)
-            elif isinstance(payload, bytes):
-                body_text_parts.append(payload.decode(errors="replace"))
-        except Exception:
-            payload = msg.get_payload(decode=True)
-            if payload:
-                body_text_parts.append(payload.decode(errors="replace"))
-
-    body_text = "\n".join(body_text_parts)
-    found_urls = URL_REGEX.findall(body_text)
-    urls = list(dict.fromkeys(found_urls))
-
-    auth_results_header = str(msg.get("Authentication-Results", "") or "").lower()
-    received_spf_header = str(msg.get("Received-SPF", "") or "").lower()
-
-    spf_val = "none"
-    if "spf=pass" in auth_results_header or received_spf_header.startswith("pass"):
-        spf_val = "pass"
-    elif "spf=fail" in auth_results_header or received_spf_header.startswith("fail") or received_spf_header.startswith("softfail"):
-        spf_val = "fail"
-
-    dkim_val = "none"
-    if "dkim=pass" in auth_results_header:
-        dkim_val = "pass"
-    elif "dkim=fail" in auth_results_header:
-        dkim_val = "fail"
-
-    return {
-        "from": from_data,
-        "reply_to": reply_to,
-        "return_path": return_path,
-        "subject": subject,
-        "urls": urls,
-        "spf": spf_val,
-        "dkim": dkim_val,
-        "authentication": {
-            "spf": spf_val,
-            "dkim": dkim_val,
-        },
-    }
-
-
-def _dict_to_parsed_email(data: Dict[str, Any]) -> ParsedEmail:
-    """Converts normalized email dictionary to typed ParsedEmail object for ThreatDetector."""
-    if isinstance(data.get("_parsed_obj"), ParsedEmail):
-        return data["_parsed_obj"]
-
-    parsed = ParsedEmail()
-    msg = parsed.message
-
-    from_val = data.get("from")
-    if isinstance(from_val, dict):
-        msg.from_.name = from_val.get("name")
-        msg.from_.address = from_val.get("address")
-    elif isinstance(from_val, str):
-        msg.from_.address = from_val
-
-    msg.reply_to = data.get("reply_to")
-    msg.return_path = data.get("return_path")
-    msg.subject = data.get("subject")
-    msg.date = data.get("date")
-    msg.body_text = data.get("body_text") or data.get("body") or ""
-
-    urls = data.get("urls") or []
-    for u in urls:
-        if isinstance(u, str):
-            host = _extract_url_domain(u)
-            parsed_path = ""
-            try:
-                parsed_path = urlparse(u).path or ""
-            except Exception:
-                pass
-            msg.urls.append(
-                URLMetadata(
-                    raw=u,
-                    scheme=urlparse(u).scheme if "://" in u else "http",
-                    host=host,
-                    path=parsed_path,
-                    parse_status="parsed" if host else "unparsed",
-                )
-            )
-        elif isinstance(u, dict):
-            msg.urls.append(
-                URLMetadata(
-                    raw=u.get("raw", ""),
-                    scheme=u.get("scheme"),
-                    host=u.get("host"),
-                    path=u.get("path"),
-                    parse_status=u.get("parse_status", "parsed"),
-                )
-            )
-
-    for att in data.get("attachments") or []:
-        if isinstance(att, dict):
-            msg.attachments.append(
-                AttachmentMetadata(
-                    filename=att.get("filename"),
-                    content_type=att.get("content_type"),
-                    size_bytes=att.get("size_bytes", 0),
-                    sha256=att.get("sha256"),
-                    parse_status=att.get("parse_status", "parsed"),
-                )
-            )
-
-    auth_data = data.get("authentication") or {}
-    spf_res = data.get("spf") or (auth_data.get("spf") if isinstance(auth_data, dict) else None)
-    if isinstance(spf_res, dict):
-        spf_res = spf_res.get("result")
-    if isinstance(spf_res, str):
-        parsed.authentication.spf.result = spf_res.lower()
-
-    dkim_res = data.get("dkim") or (auth_data.get("dkim") if isinstance(auth_data, dict) else None)
-    if isinstance(dkim_res, dict):
-        dkim_res = dkim_res.get("result")
-    if isinstance(dkim_res, str):
-        parsed.authentication.dkim.result = dkim_res.lower()
-
-    dmarc_res = data.get("dmarc") or (auth_data.get("dmarc") if isinstance(auth_data, dict) else None)
-    if isinstance(dmarc_res, dict):
-        dmarc_res = dmarc_res.get("result")
-    if isinstance(dmarc_res, str):
-        parsed.authentication.dmarc.result = dmarc_res.lower()
-
-    return parsed
-
-
-def parse_email(raw_bytes: bytes) -> Dict[str, Any]:
-    """
-    Parses raw .eml email bytes using Person 2's RFC-compliant EmailParser.
-    Returns normalized dictionary representation while preserving forensic fields.
-    """
-    try:
-        parsed_obj = EmailParser().parse(raw_bytes)
-        return {
-            "from": {
-                "name": parsed_obj.message.from_.name,
-                "address": parsed_obj.message.from_.address,
-            },
-            "reply_to": parsed_obj.message.reply_to,
-            "return_path": parsed_obj.message.return_path,
-            "subject": parsed_obj.message.subject,
-            "date": parsed_obj.message.date,
-            "body_text": parsed_obj.message.body_text,
-            "urls": [u.raw for u in parsed_obj.message.urls],
-            "attachments": [a.to_dict() for a in parsed_obj.message.attachments],
-            "spf": parsed_obj.authentication.spf.result,
-            "dkim": parsed_obj.authentication.dkim.result,
-            "dmarc": parsed_obj.authentication.dmarc.result,
-            "authentication": {
-                "spf": parsed_obj.authentication.spf.result,
-                "dkim": parsed_obj.authentication.dkim.result,
-                "dmarc": parsed_obj.authentication.dmarc.result,
-            },
-            "trace": parsed_obj.trace.to_dict(),
-            "warnings": [w.to_dict() for w in parsed_obj.warnings],
-            "_parsed_obj": parsed_obj,
-        }
-    except Exception:
-        return _fallback_parse_email(raw_bytes)
-
-
-def _build_detection_context(current_case_id: str, case_db: List[Dict[str, Any]]) -> DetectionContext:
-    """Builds DetectionContext from existing case_db to detect reused indicators."""
+def _build_detection_context(current_case_id: str, prior_cases: Optional[List[Dict[str, Any]]] = None) -> DetectionContext:
+    """Builds DetectionContext from existing SQLite cases (or passed prior_cases) to detect reused indicators."""
+    if prior_cases is None:
+        prior_cases = get_all_cases()
     reused: List[ReusedIndicator] = []
-    for c in case_db:
+    for c in prior_cases:
         c_id = c.get("case_id")
         if not c_id or c_id == current_case_id:
             continue
@@ -310,7 +117,7 @@ def _build_detection_context(current_case_id: str, case_db: List[Dict[str, Any]]
                 indicator_type="domain",
                 value=c_from,
                 related_case_ids=[c_id],
-                source=f"case_db:{c_id}.message.from",
+                source=f"case_store:{c_id}.message.from",
             ))
 
         c_reply = _extract_email_domain(c_msg.get("reply_to"))
@@ -319,7 +126,7 @@ def _build_detection_context(current_case_id: str, case_db: List[Dict[str, Any]]
                 indicator_type="domain",
                 value=c_reply,
                 related_case_ids=[c_id],
-                source=f"case_db:{c_id}.message.reply_to",
+                source=f"case_store:{c_id}.message.reply_to",
             ))
 
         for u in c_msg.get("urls") or []:
@@ -329,7 +136,7 @@ def _build_detection_context(current_case_id: str, case_db: List[Dict[str, Any]]
                     indicator_type="url",
                     value=u_str,
                     related_case_ids=[c_id],
-                    source=f"case_db:{c_id}.message.urls",
+                    source=f"case_store:{c_id}.message.urls",
                 ))
                 u_host = _extract_url_domain(u_str)
                 if u_host:
@@ -337,7 +144,7 @@ def _build_detection_context(current_case_id: str, case_db: List[Dict[str, Any]]
                         indicator_type="domain",
                         value=u_host,
                         related_case_ids=[c_id],
-                        source=f"case_db:{c_id}.message.urls.host",
+                        source=f"case_store:{c_id}.message.urls.host",
                     ))
 
         for att in c_msg.get("attachments") or []:
@@ -346,50 +153,11 @@ def _build_detection_context(current_case_id: str, case_db: List[Dict[str, Any]]
                     indicator_type="attachment_sha256",
                     value=att["sha256"],
                     related_case_ids=[c_id],
-                    source=f"case_db:{c_id}.message.attachments.sha256",
+                    source=f"case_store:{c_id}.message.attachments.sha256",
                 ))
 
     return DetectionContext(reused_indicators=reused, current_case_id=current_case_id)
 
-
-TRUSTED_DOMAINS: Set[str] = {
-    "youtube.com",
-    "twitter.com",
-    "x.com",
-    "linkedin.com",
-    "techcrunch.com",
-    "google.com",
-    "github.com",
-    "microsoft.com",
-    "apple.com",
-    "facebook.com",
-    "instagram.com",
-    "beehiiv.com",
-    "mailchimp.com",
-    "substack.com",
-}
-
-
-def _is_trusted_domain(domain: Optional[str]) -> bool:
-    """Checks if a domain is a known trusted domain or subdomain thereof."""
-    if not domain:
-        return False
-    domain = domain.lower().strip()
-    for trusted in TRUSTED_DOMAINS:
-        if domain == trusted or domain.endswith("." + trusted):
-            return True
-    return False
-
-
-def _extract_auth_status(auth_val: Any) -> str:
-    """Extract lowercase status string from a string or dict auth descriptor."""
-    if not auth_val:
-        return ""
-    if isinstance(auth_val, str):
-        return auth_val.strip().lower()
-    if isinstance(auth_val, dict):
-        return str(auth_val.get("result", "") or "").strip().lower()
-    return ""
 
 
 def _extract_email_domain(email_val: Any) -> Optional[str]:
@@ -424,121 +192,18 @@ def _extract_url_domain(url_val: str) -> Optional[str]:
         return None
 
 
-def analyze_risk(parsed_email: Union[ParsedEmail, Dict[str, Any]], context: Optional[DetectionContext] = None) -> Dict[str, Any]:
-    """
-    Analyzes normalized parsed email signals and calculates an explainable risk assessment.
-    If a ParsedEmail object is provided (or _parsed_obj in dict), uses Person 3's ThreatDetector heuristic engine.
-    Also retains fallback support for prototype normalized dict structures.
-    """
-    if isinstance(parsed_email, ParsedEmail) or (isinstance(parsed_email, dict) and isinstance(parsed_email.get("_parsed_obj"), ParsedEmail)):
-        obj = parsed_email if isinstance(parsed_email, ParsedEmail) else parsed_email["_parsed_obj"]
-        detector = ThreatDetector()
-        res = detector.analyze(obj, context=context)
-        formatted_reasons = []
-        for rc in res.get("reason_codes", []):
-            formatted_reasons.append({
-                "code": rc.get("code", ""),
-                "title": rc.get("message") or rc.get("title", ""),
-                "message": rc.get("message") or rc.get("title", ""),
-                "evidence_path": rc.get("evidence_path", ""),
-                "weight": rc.get("weight", 0),
-            })
-        return {
-            "score": res.get("score", 0),
-            "band": res.get("band", "LOW"),
-            "reason_codes": formatted_reasons,
-            "limitations": res.get("limitations", []),
-        }
 
-    score = 0
-    reason_codes: List[Dict[str, str]] = []
-
-    from_domain = _extract_email_domain(parsed_email.get("from"))
-    reply_to_domain = _extract_email_domain(parsed_email.get("reply_to"))
-    subject = parsed_email.get("subject")
-    urls = parsed_email.get("urls") or []
-
-    # Authentication resolution (SPF / DKIM)
-    spf_status = _extract_auth_status(parsed_email.get("spf"))
-    dkim_status = _extract_auth_status(parsed_email.get("dkim"))
-    if not spf_status and not dkim_status and isinstance(parsed_email.get("authentication"), dict):
-        auth_dict = parsed_email.get("authentication") or {}
-        spf_status = _extract_auth_status(auth_dict.get("spf"))
-        dkim_status = _extract_auth_status(auth_dict.get("dkim"))
-
-    is_authenticated = (spf_status == "pass" or dkim_status == "pass")
-
-    # Rule 1: REPLY_TO_MISMATCH vs REPLY_TO_ESP_MISMATCH
-    if from_domain and reply_to_domain and from_domain != reply_to_domain:
-        if is_authenticated:
-            score += 5
-            reason_codes.append({
-                "code": "REPLY_TO_ESP_MISMATCH",
-                "title": "Reply destination differs from sender domain (Authenticated ESP relay)",
-                "evidence_path": "message.reply_to (authenticated ESP relay)",
-            })
-        else:
-            score += 50
-            reason_codes.append({
-                "code": "REPLY_TO_MISMATCH",
-                "title": "Reply destination differs from visible sender domain",
-                "evidence_path": "message.reply_to",
-            })
-
-    # Rule 2: URGENT_SUBJECT (+20)
-    if isinstance(subject, str) and re.search(r"\burgent\b", subject, re.IGNORECASE):
-        score += 20
-        reason_codes.append({
-            "code": "URGENT_SUBJECT",
-            "title": "Urgent language detected in subject line",
-            "evidence_path": "message.subject",
-        })
-
-    # Rule 3: SUSPICIOUS_URL (+20 for untrusted external domains)
-    if from_domain and isinstance(urls, list):
-        has_suspicious_url = False
-        for u in urls:
-            u_domain = _extract_url_domain(u)
-            if u_domain and u_domain != from_domain:
-                # Do not penalize known trusted domains
-                if not _is_trusted_domain(u_domain):
-                    has_suspicious_url = True
-                    break
-        if has_suspicious_url:
-            score += 20
-            reason_codes.append({
-                "code": "SUSPICIOUS_URL",
-                "title": "External URL domain differs from sender domain",
-                "evidence_path": "message.urls",
-            })
-
-    # Clamping score to 0-100
-    clamped_score = max(0, min(100, score))
-
-    # Determine risk band
-    if clamped_score >= 70:
-        band = "HIGH"
-    elif clamped_score >= 30:
-        band = "REVIEW"
-    else:
-        band = "LOW"
-
-    return {
-        "score": clamped_score,
-        "band": band,
-        "reason_codes": reason_codes,
-    }
-
-
-def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, Any]]) -> Dict[str, Any]:
+def enrich_and_correlate(parsed_email: Dict[str, Any], prior_cases: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
     Enriches observable email indicators using local cached demo intelligence and correlates
-    the current case with prior cases in case_db via exact shared indicators.
+    the current case with prior cases in SQLite via exact shared indicators.
     
     Returns:
     - infrastructure: indicators, approximate geo context, provider status
     - campaign: related case IDs, shared indicators, graph nodes and edges
     """
+    if prior_cases is None:
+        prior_cases = get_all_cases()
     demo_intel = _load_demo_intel()
     
     # 1. Intelligence: extract domains and originating IP
@@ -622,10 +287,10 @@ def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, A
     graph_edges: List[Dict[str, Any]] = []
     seen_node_ids: Set[str] = set()
 
-    current_case_id = f"TS-DEMO-{len(case_db) + 1:03d}"
+    current_case_id = parsed_email.get("case_id") or f"TS-DEMO-{len(prior_cases) + 1:03d}"
 
     if reply_to_domain:
-        for prior_case in case_db:
+        for prior_case in prior_cases:
             prior_message = prior_case.get("message") or {}
             prior_reply_domain = _extract_email_domain(prior_message.get("reply_to"))
 
@@ -687,7 +352,7 @@ def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, A
             })
 
     if origin_ip:
-        for prior_case in case_db:
+        for prior_case in prior_cases:
             prior_message = prior_case.get("message") or {}
             prior_origin = prior_message.get("origin_ip")
             if prior_origin and prior_origin == origin_ip:
@@ -736,7 +401,7 @@ def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, A
                     "evidence": ["trace.hops[0].from_ip"],
                 })
 
-        if any((c.get("message") or {}).get("origin_ip") == origin_ip for c in case_db):
+        if any((c.get("message") or {}).get("origin_ip") == origin_ip for c in prior_cases):
             shared_indicators.append({
                 "type": "ip",
                 "value": origin_ip,
@@ -771,13 +436,32 @@ async def tier_2_llm_review(parsed_email: dict, rule_risk: dict) -> dict:
             client = Groq(api_key=api_key)
 
         system_prompt = (
-            "You are a Senior Email Security and Threat Intelligence Analyst. A Tier 1 heuristic engine has analyzed this email. "
-            "Your job is to provide an expert forensic review. "
-            "1. Check if this is a benign false positive (e.g. verified Email Service Provider like Substack, Beehiiv, or Mailchimp with benign intent and trusted domains). "
-            "2. If malicious evasion techniques are present (such as open redirect trampolines, percent-encoded obfuscation, SPF softfail/unauthorized relay, or brand spoofing), affirm the high risk and provide a concise forensic narrative. "
-            "Return your final verdict as a strict JSON object with these keys: "
-            '"is_false_positive" (boolean), "adjusted_score" (int 0-100), "adjusted_band" ("LOW"|"REVIEW"|"HIGH"), '
-            'and "analyst_summary" (string explaining your forensic reasoning, key threat indicators, and defensive recommendation).'
+            "You are a Senior Email Security and Threat Intelligence Analyst. A Tier 1 heuristic engine has analyzed this email.\n"
+            "Your role is to provide a deterministic, calibrated forensic risk review.\n\n"
+            "Forensic Calibration & Scoring Rubric:\n"
+            "1. Benign False Positive (e.g. verified newsletters/ESP like Substack/Beehiiv/Mailchimp, standard service notifications with trusted domains and passing SPF/DKIM):\n"
+            "   - is_false_positive: true\n"
+            "   - adjusted_score: 5 to 25\n"
+            "   - adjusted_band: 'LOW'\n"
+            "2. Genuine Malicious Threat (e.g. credential harvesting, malicious links, open redirect trampolines, obfuscated scripts, urgent financial wire demands with mismatched sender/reply-to):\n"
+            "   - is_false_positive: false\n"
+            "   - adjusted_score: 75 to 100\n"
+            "   - adjusted_band: 'HIGH'\n"
+            "3. Ambiguous / Unsolicited Outreach / Grey-Area (e.g. unsolicited student or internship pitches, recruitment marketing from personal webmail like Gmail with passing SPF/DKIM but without credential theft, phishing links, or malicious payloads):\n"
+            "   - is_false_positive: false\n"
+            "   - adjusted_score: 40 to 50\n"
+            "   - adjusted_band: 'REVIEW'\n\n"
+            "Deterministic Band Scale:\n"
+            "- 0 to 29: 'LOW'\n"
+            "- 30 to 69: 'REVIEW'\n"
+            "- 70 to 100: 'HIGH'\n\n"
+            "Return a strict JSON object with exact keys:\n"
+            '{\n'
+            '  "is_false_positive": boolean,\n'
+            '  "adjusted_score": integer (0-100),\n'
+            '  "adjusted_band": "LOW" | "REVIEW" | "HIGH",\n'
+            '  "analyst_summary": string explaining forensic evidence, intent analysis, and security posture\n'
+            '}'
         )
 
         user_content = json.dumps(
@@ -816,6 +500,8 @@ async def tier_2_llm_review(parsed_email: dict, rule_risk: dict) -> dict:
                         {"role": "user", "content": user_content},
                     ],
                     model=model_name,
+                    temperature=0.0,
+                    seed=42,
                     response_format={"type": "json_object"},
                 )
                 if chat_completion and chat_completion.choices:
@@ -833,7 +519,22 @@ async def tier_2_llm_review(parsed_email: dict, rule_risk: dict) -> dict:
         if not content:
             return {"error": "LLM review unavailable"}
 
-        return json.loads(content)
+        parsed_res = json.loads(content)
+        # Enforce deterministic band threshold alignment
+        try:
+            raw_score = int(parsed_res.get("adjusted_score", rule_risk.get("score", 0)))
+            score = max(0, min(100, raw_score))
+            parsed_res["adjusted_score"] = score
+            if score <= 29:
+                parsed_res["adjusted_band"] = "LOW"
+            elif score <= 69:
+                parsed_res["adjusted_band"] = "REVIEW"
+            else:
+                parsed_res["adjusted_band"] = "HIGH"
+        except (ValueError, TypeError):
+            pass
+
+        return parsed_res
     except Exception as e:
         print(f"[Tier 2 LLM Review Error]: {e}")
         return {"error": "LLM review unavailable"}
@@ -844,11 +545,61 @@ async def health_check():
     return {"status": "ok"}
 
 
+def get_next_case_id(artifacts_dir: Optional[str] = None) -> str:
+    """
+    Computes the next case ID using the high-watermark of existing IDs in both
+    the SQLite database and the artifacts directory.
+    If no cases exist, it returns 'TS-DEMO-001'.
+    """
+    max_num = get_max_case_number()
+
+    target_dir = artifacts_dir or ARTIFACTS_DIR
+    if os.path.isdir(target_dir):
+        try:
+            for fname in os.listdir(target_dir):
+                m = re.match(r"TS-DEMO-(\d+)\.eml", fname, re.IGNORECASE)
+                if m:
+                    num = int(m.group(1))
+                    if num > max_num:
+                        max_num = num
+        except Exception:
+            pass
+
+    next_num = max_num + 1
+    candidate = f"TS-DEMO-{next_num:03d}"
+    while get_case(candidate) is not None:
+        next_num += 1
+        candidate = f"TS-DEMO-{next_num:03d}"
+    return candidate
+
+
 @app.post("/api/v1/cases")
 async def create_case(file: UploadFile = File(...)):
-    content = await file.read()
-    calculated_hash = calculate_sha256(content)
-    byte_len = get_byte_length(content)
+    raw_bytes = await file.read()
+    calculated_hash = calculate_sha256(raw_bytes)
+    byte_len = get_byte_length(raw_bytes)
+
+    # High-watermark case ID generation across SQLite and disk storage
+    case_id = get_next_case_id()
+
+    try:
+        os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+        artifact_path = os.path.join(ARTIFACTS_DIR, f"{case_id}.eml")
+        with open(artifact_path, "wb") as f:
+            f.write(raw_bytes)
+
+        rel_artifacts_dir = os.path.abspath(os.path.join("data", "artifacts"))
+        if rel_artifacts_dir != os.path.abspath(ARTIFACTS_DIR):
+            os.makedirs(rel_artifacts_dir, exist_ok=True)
+            with open(os.path.join(rel_artifacts_dir, f"{case_id}.eml"), "wb") as f:
+                f.write(raw_bytes)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save email artifact: {str(e)}",
+        )
+
+    content = raw_bytes
 
     # 1. Run Person 2 Forensic Parser
     parser = EmailParser()
@@ -901,9 +652,9 @@ async def create_case(file: UploadFile = File(...)):
         "trace": parsed_email_obj.trace.to_dict(),
     }
 
-    # 3. Build DetectionContext for cross-case indicator reuse
-    case_id = f"TS-DEMO-{len(case_db) + 1:03d}"
-    detection_context = _build_detection_context(case_id, case_db)
+    # 3. Build DetectionContext for cross-case indicator reuse from SQLite
+    prior_cases = get_all_cases()
+    detection_context = _build_detection_context(case_id, prior_cases)
 
     # 4. Run Person 3 Threat Detector Heuristics Engine
     detector = ThreatDetector()
@@ -927,8 +678,8 @@ async def create_case(file: UploadFile = File(...)):
         "limitations": threat_result.get("limitations", []),
     }
 
-    # 5. Run Intelligence Enrichment & Campaign Correlation
-    enrichment = enrich_and_correlate(parsed_message, case_db)
+    # 5. Run Intelligence Enrichment & Campaign Correlation from SQLite
+    enrichment = enrich_and_correlate(parsed_message, prior_cases)
 
     # 6. Tier 2 Dynamic LLM Review
     # Triggers on score >= 30, or DMARC fail with URLs, or high-discrepancy obfuscation/redirects
@@ -965,7 +716,56 @@ async def create_case(file: UploadFile = File(...)):
         "authentication": parsed_email_obj.authentication.to_dict(),
     }
 
-    # 8. Append to in-memory case_db for subsequent correlation
+    # 8. Persist to SQLite database as primary source of truth
+    save_case(case_record)
     case_db.append(case_record)
 
     return case_record
+
+
+@app.get("/api/v1/cases")
+async def get_cases():
+    cases = list_cases()
+    return cases if cases is not None else []
+
+
+@app.get("/api/v1/cases/{case_id}")
+async def get_case_by_id(case_id: str):
+    case = get_case(case_id)
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found",
+        )
+    return case
+
+
+@app.get("/api/v1/cases/{case_id}/report")
+async def get_case_report(case_id: str, format: str = "markdown"):
+    case = get_case(case_id)
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found",
+        )
+
+    fmt = format.lower().strip()
+    if fmt in ("markdown", "md"):
+        content = generate_markdown_report(case)
+        media_type = "text/markdown; charset=utf-8"
+        filename = f"TraceShield_Report_{case_id}.md"
+    elif fmt == "html":
+        content = generate_html_report(case)
+        media_type = "text/html; charset=utf-8"
+        filename = f"TraceShield_Report_{case_id}.html"
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported format '{format}'. Supported formats: markdown, html",
+        )
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"'
+    }
+    return Response(content=content, media_type=media_type, headers=headers)
+

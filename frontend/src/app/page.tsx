@@ -32,6 +32,8 @@ import {
   Globe,
   Server,
   FileCode,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 
 const API_BASE_URL =
@@ -464,6 +466,7 @@ export default function Home() {
       {/* Redesigned Modern SaaS Top Navigation Bar */}
       <Navbar
         apiBaseUrl={API_BASE_URL}
+        activeCaseId={caseData?.case_id}
         onNewScan={() => {
           setCaseData(null);          // clear old results from screen
           setError(null);             // clear old error messages
@@ -597,35 +600,54 @@ export default function Home() {
                         </Badge>
                       )}
                     </div>
-                    {caseData.artifact?.sha256 && (
-                      <div className="flex items-center gap-2 text-xs font-sans text-zinc-400">
-                        <span>SHA-256:</span>
-                        <span className="text-[#FDFBD4] font-mono">
-                          {caseData.artifact.sha256.substring(0, 16)}...
-                        </span>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(caseData.artifact?.sha256 || "")
-                          }
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#121417] hover:bg-[#2A2118] border border-[#2A231D] hover:border-[#8D5A2B] text-xs font-sans text-zinc-300 transition-colors cursor-pointer"
-                          title="Copy SHA-256"
-                        >
-                          {copiedHash ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-400" />
-                              <span className="text-[11px] text-emerald-400 font-sans">
-                                Copied
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3 text-zinc-400" />
-                              <span className="text-[11px] font-sans">Copy</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-3">
+                      {/* Download Forensic Report Button */}
+                      <button
+                        onClick={() => {
+                          window.open(
+                            `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseData.case_id)}/report?format=html`,
+                            "_blank",
+                            "noopener,noreferrer"
+                          );
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#261B12] hover:bg-[#3D2C1E] border border-[#D47E30]/60 hover:border-[#D47E30] text-xs font-sans font-semibold text-[#FDFBD4] hover:text-white transition-all duration-150 shadow-[0_0_12px_rgba(212,126,48,0.15)] hover:shadow-[0_0_16px_rgba(212,126,48,0.3)] cursor-pointer"
+                        title="Download/Open Forensic Incident Report (HTML)"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#D47E30]" />
+                        <span>Download Forensic Report</span>
+                        <ExternalLink className="w-3 h-3 text-zinc-400 ml-0.5" />
+                      </button>
+
+                      {caseData.artifact?.sha256 && (
+                        <div className="flex items-center gap-2 text-xs font-sans text-zinc-400">
+                          <span>SHA-256:</span>
+                          <span className="text-[#FDFBD4] font-mono">
+                            {caseData.artifact.sha256.substring(0, 16)}...
+                          </span>
+                          <button
+                            onClick={() =>
+                              copyToClipboard(caseData.artifact?.sha256 || "")
+                            }
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#121417] hover:bg-[#2A2118] border border-[#2A231D] hover:border-[#8D5A2B] text-xs font-sans text-zinc-300 transition-colors cursor-pointer"
+                            title="Copy SHA-256"
+                          >
+                            {copiedHash ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span className="text-[11px] text-emerald-400 font-sans">
+                                  Copied
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3 text-zinc-400" />
+                                <span className="text-[11px] font-sans">Copy</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* 2x2 Metadata Grid */}
@@ -917,6 +939,16 @@ export default function Home() {
                             </span>
                             <span className="text-xs text-emerald-400 font-sans font-medium mt-1">
                               Legitimate ESP mismatch or trusted domain verified.
+                            </span>
+                          </div>
+                        ) : caseData.ai_review.adjusted_band === "REVIEW" ? (
+                          <div className="flex flex-col items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/40 border border-[#8D5A2B] text-amber-300 font-bold font-sans text-xs">
+                              <span className="h-2 w-2 rounded-full bg-amber-400"></span>
+                              MANUAL REVIEW RECOMMENDED
+                            </span>
+                            <span className="text-xs text-amber-300/90 font-sans font-medium mt-1">
+                              Ambiguous signals; no definitive exploit or credential theft found.
                             </span>
                           </div>
                         ) : (
