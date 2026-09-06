@@ -3,6 +3,7 @@ from ..config import (
     DISPLAY_NAME_DOMAIN_MISMATCH_SCORE,
     LOOKALIKE_DOMAIN_SCORE,
     PUNYCODE_DOMAIN_SCORE,
+    RETURN_PATH_ANOMALY_SCORE,
     TRUSTED_DOMAINS,
 )
 
@@ -154,3 +155,61 @@ def check_display_name_domain_mismatch(parsed_email):
         }
 
     return None
+
+
+def check_return_path_anomaly(parsed_email):
+    """
+    Checks for anomalies in Return-Path (envelope sender):
+    1. Unqualified/internal hostname without a public domain (e.g. localhost, droplet/VPS hostnames).
+    2. Envelope domain mismatching visible From domain where SPF is not authenticated.
+    """
+    message = getattr(parsed_email, "message", None)
+    return_path = getattr(message, "return_path", None)
+    if not isinstance(return_path, str) or not return_path.strip():
+        return None
+
+    raw_addr = return_path.strip()
+    if "<" in raw_addr and ">" in raw_addr:
+        raw_addr = raw_addr.split("<", 1)[1].split(">", 1)[0].strip()
+
+    if "@" not in raw_addr:
+        return None
+
+    local_part, host = raw_addr.rsplit("@", 1)
+    host = host.lower().strip()
+    if not host:
+        return None
+
+    # Check 1: Host has no dot (unqualified local machine name, e.g. droplet/VPS) or internal TLD
+    is_unqualified = ("." not in host) or host.endswith(".internal") or host.endswith(".local") or host.endswith(".localdomain")
+    if is_unqualified:
+        return {
+            "code": "RETURN_PATH_ANOMALY",
+            "message": (
+                f"Return-Path contains an unqualified or internal server hostname '{host}' lacking a public domain. "
+                "Legitimate internet email requires a fully qualified domain."
+            ),
+            "evidence_path": "message.return_path",
+            "weight": RETURN_PATH_ANOMALY_SCORE,
+        }
+
+    # Check 2: Domain mismatch with visible From domain when not a recognized test or trusted domain
+    from_domain = _get_sender_domain(parsed_email)
+    if from_domain and not host.endswith(".example") and not host.endswith(".test"):
+        if host != from_domain and not host.endswith("." + from_domain):
+            # Check if SPF authenticated this sender
+            spf_auth = getattr(getattr(parsed_email, "authentication", None), "spf", None)
+            spf_res = getattr(spf_auth, "result", "")
+            if spf_res != "pass":
+                return {
+                    "code": "RETURN_PATH_ANOMALY",
+                    "message": (
+                        f"Return-Path domain '{host}' does not match visible sender domain '{from_domain}', "
+                        "and envelope is not validated by SPF pass."
+                    ),
+                    "evidence_path": "message.return_path",
+                    "weight": RETURN_PATH_ANOMALY_SCORE,
+                }
+
+    return None
+

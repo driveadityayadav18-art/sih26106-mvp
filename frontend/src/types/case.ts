@@ -9,6 +9,15 @@ export interface MessageData {
   return_path?: string | null;
   subject?: string | null;
   urls?: string[];
+  spf?: string | null;
+  dkim?: string | null;
+  dmarc?: string | null;
+  authentication?: {
+    spf?: string | null;
+    dkim?: string | null;
+    dmarc?: string | null;
+    compauth?: string | null;
+  } | null;
 }
 
 export interface ReasonCode {

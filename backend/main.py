@@ -1,4 +1,5 @@
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -540,20 +541,58 @@ def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, A
     """
     demo_intel = _load_demo_intel()
     
-    # 1. Intelligence: extract domains from reply_to and urls
+    # 1. Intelligence: extract domains and originating IP
     indicators: List[Dict[str, Any]] = []
     geo: List[Dict[str, Any]] = []
     observed_domains: List[str] = []
-    
+
+    origin_ip = parsed_email.get("origin_ip")
+    if not origin_ip:
+        trace_data = parsed_email.get("trace") or {}
+        for hop in trace_data.get("hops") or []:
+            f_ip = hop.get("from_ip") if isinstance(hop, dict) else getattr(hop, "from_ip", None)
+            if f_ip:
+                try:
+                    ip_cand = ipaddress.ip_address(f_ip)
+                    if not ip_cand.is_private and not ip_cand.is_loopback:
+                        origin_ip = f_ip
+                        break
+                except Exception:
+                    pass
+
+    if origin_ip:
+        indicators.append({
+            "type": "ip",
+            "value": origin_ip,
+            "source": "originating_relay_hop",
+        })
+        if origin_ip in demo_intel:
+            intel_entry = demo_intel[origin_ip]
+            geo.append({
+                "indicator": origin_ip,
+                "country": intel_entry.get("country"),
+                "city": intel_entry.get("city"),
+                "provider": intel_entry.get("provider", "demo_cache"),
+                "accuracy_caveat": "Originating sender IP resolved from earliest relay hop header.",
+            })
+        else:
+            geo.append({
+                "indicator": origin_ip,
+                "country": "External Public Network",
+                "city": "Unknown",
+                "provider": "Autonomous System Relay",
+                "accuracy_caveat": "Observable infrastructure context; external relay hop.",
+            })
+
     reply_to_domain = _extract_email_domain(parsed_email.get("reply_to"))
     if reply_to_domain and reply_to_domain not in observed_domains:
         observed_domains.append(reply_to_domain)
-        
+
     for url in parsed_email.get("urls") or []:
         u_domain = _extract_url_domain(url)
         if u_domain and u_domain not in observed_domains:
             observed_domains.append(u_domain)
-            
+
     for domain in observed_domains:
         indicators.append({
             "type": "domain",
@@ -576,7 +615,7 @@ def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, A
         "provider_status": "demo_cache",
     }
 
-    # 2. Campaign Correlation: compare reply_to domain with prior cases in case_db
+    # 2. Campaign Correlation: compare reply_to domain and origin_ip with prior cases
     related_case_ids: List[str] = []
     shared_indicators: List[Dict[str, Any]] = []
     graph_nodes: List[Dict[str, Any]] = []
@@ -589,12 +628,12 @@ def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, A
         for prior_case in case_db:
             prior_message = prior_case.get("message") or {}
             prior_reply_domain = _extract_email_domain(prior_message.get("reply_to"))
-            
+
             if prior_reply_domain and prior_reply_domain == reply_to_domain:
                 prior_id = prior_case.get("case_id", "UNKNOWN_CASE")
                 if prior_id not in related_case_ids:
                     related_case_ids.append(prior_id)
-                
+
                 # Register current case node
                 current_node_id = f"case:{current_case_id}"
                 if current_node_id not in seen_node_ids:
@@ -647,6 +686,63 @@ def enrich_and_correlate(parsed_email: Dict[str, Any], case_db: List[Dict[str, A
                 "relationship": "SHARED_REPLY_DOMAIN",
             })
 
+    if origin_ip:
+        for prior_case in case_db:
+            prior_message = prior_case.get("message") or {}
+            prior_origin = prior_message.get("origin_ip")
+            if prior_origin and prior_origin == origin_ip:
+                prior_id = prior_case.get("case_id", "UNKNOWN_CASE")
+                if prior_id not in related_case_ids:
+                    related_case_ids.append(prior_id)
+
+                current_node_id = f"case:{current_case_id}"
+                if current_node_id not in seen_node_ids:
+                    graph_nodes.append({
+                        "id": current_node_id,
+                        "type": "case",
+                        "label": current_case_id,
+                    })
+                    seen_node_ids.add(current_node_id)
+
+                ip_node_id = f"ip:{origin_ip}"
+                if ip_node_id not in seen_node_ids:
+                    graph_nodes.append({
+                        "id": ip_node_id,
+                        "type": "ip",
+                        "label": origin_ip,
+                        "source": "originating_relay_hop",
+                    })
+                    seen_node_ids.add(ip_node_id)
+
+                prior_node_id = f"case:{prior_id}"
+                if prior_node_id not in seen_node_ids:
+                    graph_nodes.append({
+                        "id": prior_node_id,
+                        "type": "case",
+                        "label": prior_id,
+                    })
+                    seen_node_ids.add(prior_node_id)
+
+                graph_edges.append({
+                    "source": current_node_id,
+                    "target": ip_node_id,
+                    "type": "SHARED_ORIGIN_IP",
+                    "evidence": ["trace.hops[0].from_ip"],
+                })
+                graph_edges.append({
+                    "source": prior_node_id,
+                    "target": ip_node_id,
+                    "type": "SHARED_ORIGIN_IP",
+                    "evidence": ["trace.hops[0].from_ip"],
+                })
+
+        if any((c.get("message") or {}).get("origin_ip") == origin_ip for c in case_db):
+            shared_indicators.append({
+                "type": "ip",
+                "value": origin_ip,
+                "relationship": "SHARED_ORIGIN_IP",
+            })
+
     campaign = {
         "related_case_ids": related_case_ids,
         "shared_indicators": shared_indicators,
@@ -675,12 +771,13 @@ async def tier_2_llm_review(parsed_email: dict, rule_risk: dict) -> dict:
             client = Groq(api_key=api_key)
 
         system_prompt = (
-            "You are a Senior Email Security Analyst. A Tier 1 rules engine has flagged this email with a risk score. "
-            "Your job is to review the context and determine if this is a false positive. Specifically, check if the email "
-            "is from a known Email Service Provider (ESP) like Beehiiv, Substack, or Mailchimp where a Reply-To mismatch is normal. "
-            "Check if URLs are trusted domains like YouTube or LinkedIn. Return your final verdict as a strict JSON object with "
-            'these keys: "is_false_positive" (boolean), "adjusted_score" (int 0-100), "adjusted_band" ("LOW"|"REVIEW"|"HIGH"), '
-            'and "analyst_summary" (string explaining your reasoning).'
+            "You are a Senior Email Security and Threat Intelligence Analyst. A Tier 1 heuristic engine has analyzed this email. "
+            "Your job is to provide an expert forensic review. "
+            "1. Check if this is a benign false positive (e.g. verified Email Service Provider like Substack, Beehiiv, or Mailchimp with benign intent and trusted domains). "
+            "2. If malicious evasion techniques are present (such as open redirect trampolines, percent-encoded obfuscation, SPF softfail/unauthorized relay, or brand spoofing), affirm the high risk and provide a concise forensic narrative. "
+            "Return your final verdict as a strict JSON object with these keys: "
+            '"is_false_positive" (boolean), "adjusted_score" (int 0-100), "adjusted_band" ("LOW"|"REVIEW"|"HIGH"), '
+            'and "analyst_summary" (string explaining your forensic reasoning, key threat indicators, and defensive recommendation).'
         )
 
         user_content = json.dumps(
@@ -689,7 +786,10 @@ async def tier_2_llm_review(parsed_email: dict, rule_risk: dict) -> dict:
                     "Subject": parsed_email.get("subject"),
                     "From": parsed_email.get("from"),
                     "Reply-To": parsed_email.get("reply_to"),
+                    "Origin_IP": parsed_email.get("origin_ip"),
                     "URLs": parsed_email.get("urls") or [],
+                    "Authentication": parsed_email.get("authentication"),
+                    "Body_Preview": (parsed_email.get("body_text") or "")[:500],
                 },
                 "rule_risk": rule_risk,
             },
@@ -757,7 +857,25 @@ async def create_case(file: UploadFile = File(...)):
     except Exception:
         parsed_email_obj = ParsedEmail()
 
-    # 2. Extract message dictionary for frontend and enrichment
+    # 2. Extract originating IP and message dictionary for frontend and enrichment
+    origin_ip = None
+    if parsed_email_obj.trace.hops:
+        for hop in parsed_email_obj.trace.hops:
+            if hop.from_ip:
+                try:
+                    ip_cand = ipaddress.ip_address(hop.from_ip)
+                    if not ip_cand.is_private and not ip_cand.is_loopback:
+                        origin_ip = hop.from_ip
+                        break
+                except Exception:
+                    pass
+    if not origin_ip:
+        for raw_hdr in parsed_email_obj.authentication.raw_authentication_headers:
+            ip_m = re.search(r"sender\s+IP\s+is\s+([0-9a-fA-F:.]+)", raw_hdr, re.IGNORECASE)
+            if ip_m:
+                origin_ip = ip_m.group(1)
+                break
+
     parsed_message = {
         "from": {
             "name": parsed_email_obj.message.from_.name,
@@ -765,6 +883,7 @@ async def create_case(file: UploadFile = File(...)):
         },
         "reply_to": parsed_email_obj.message.reply_to,
         "return_path": parsed_email_obj.message.return_path,
+        "origin_ip": origin_ip,
         "subject": parsed_email_obj.message.subject,
         "date": parsed_email_obj.message.date,
         "body_text": parsed_email_obj.message.body_text,
@@ -777,7 +896,9 @@ async def create_case(file: UploadFile = File(...)):
             "spf": parsed_email_obj.authentication.spf.result,
             "dkim": parsed_email_obj.authentication.dkim.result,
             "dmarc": parsed_email_obj.authentication.dmarc.result,
+            "compauth": parsed_email_obj.authentication.compauth,
         },
+        "trace": parsed_email_obj.trace.to_dict(),
     }
 
     # 3. Build DetectionContext for cross-case indicator reuse
@@ -809,9 +930,21 @@ async def create_case(file: UploadFile = File(...)):
     # 5. Run Intelligence Enrichment & Campaign Correlation
     enrichment = enrich_and_correlate(parsed_message, case_db)
 
-    # 6. Tier 2 LLM Review (if risk score >= 70)
+    # 6. Tier 2 Dynamic LLM Review
+    # Triggers on score >= 30, or DMARC fail with URLs, or high-discrepancy obfuscation/redirects
+    should_trigger_llm = (
+        risk_assessment.get("score", 0) >= 30
+        or (
+            parsed_email_obj.authentication.dmarc.result == "fail"
+            and len(parsed_email_obj.message.urls) > 0
+        )
+        or any(
+            rc.get("code") in ("OBFUSCATED_URL", "TRAMPOLINE_REDIRECT", "AUTH_COMPAUTH_FAIL", "EXTERNAL_URL_MISMATCH")
+            for rc in risk_assessment.get("reason_codes", [])
+        )
+    )
     ai_review = None
-    if risk_assessment.get("score", 0) >= 70:
+    if should_trigger_llm:
         ai_review = await tier_2_llm_review(parsed_message, risk_assessment)
 
     # 7. Assemble final CaseAnalysis record matching schema

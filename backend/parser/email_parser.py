@@ -5,7 +5,7 @@ from email.header import decode_header
 from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs, unquote
 
 from .models import (
     AttachmentMetadata,
@@ -406,6 +406,14 @@ class EmailParser:
                         aligned=aligned,
                     )
                 )
+
+            # Compauth (Composite Authentication)
+            compauth_match = re.search(
+                r"\bcompauth\s*=\s*([a-z0-9]+)\b",
+                header_lower,
+            )
+            if compauth_match:
+                result.authentication.compauth = compauth_match.group(1)
 
         # -----------------------------------------------------
         # Received-SPF
@@ -1047,6 +1055,56 @@ class EmailParser:
     # URL EXTRACTION
     # =========================================================
 
+    TRAMPOLINE_PARAMS = ("q", "url", "dest", "target", "redirect", "r", "link", "goto")
+
+    def _unpack_url(self, raw_url: str, parsed):
+        """
+        Detect percent-encoding evasion and trampoline/open-redirect wrappers.
+        Returns (unpacked_target, unpacked_host, is_obfuscated, is_trampoline).
+        """
+        unpacked_target = None
+        unpacked_host = None
+        is_obfuscated = False
+        is_trampoline = False
+
+        # 1. Check if raw_url itself has percent-encoded obfuscation in scheme, host or path
+        # e.g., h%74%74p or %2d in domains or hex-encoded characters
+        if re.search(r"%[0-9a-fA-F]{2}", raw_url):
+            is_obfuscated = True
+
+        # 2. Check query parameters for trampoline redirects
+        if parsed.query:
+            try:
+                qs = parse_qs(parsed.query, keep_blank_values=True)
+                for param in self.TRAMPOLINE_PARAMS:
+                    if param in qs:
+                        for val in qs[param]:
+                            curr = val.strip()
+                            # Unquote up to 3 times to unwrap nested encoding
+                            for _ in range(3):
+                                unq = unquote(curr)
+                                if unq != curr:
+                                    curr = unq
+                                else:
+                                    break
+
+                            # Check if the unquoted value is a valid HTTP/HTTPS URL
+                            if re.match(r"^https?://", curr, re.IGNORECASE):
+                                is_trampoline = True
+                                unpacked_target = curr
+                                try:
+                                    target_split = urlsplit(curr)
+                                    unpacked_host = target_split.hostname
+                                except Exception:
+                                    pass
+                                break
+                    if is_trampoline:
+                        break
+            except Exception:
+                pass
+
+        return unpacked_target, unpacked_host, is_obfuscated, is_trampoline
+
     def _extract_urls(self, result: ParsedEmail):
         """
         Extract URL metadata from the plain-text body and HTML links.
@@ -1084,6 +1142,10 @@ class EmailParser:
                 if not parsed.scheme or not parsed.netloc:
                     raise ValueError
 
+                unpacked_target, unpacked_host, is_obfuscated, is_trampoline = (
+                    self._unpack_url(raw_url, parsed)
+                )
+
                 result.message.urls.append(
                     URLMetadata(
                         raw=raw_url,
@@ -1093,8 +1155,32 @@ class EmailParser:
                         query_present=bool(parsed.query),
                         is_https=parsed.scheme.lower() == "https",
                         parse_status="parsed",
+                        unpacked_target=unpacked_target,
+                        unpacked_host=unpacked_host,
+                        is_obfuscated=is_obfuscated,
+                        is_trampoline=is_trampoline,
                     )
                 )
+
+                # If an open redirect destination was unpacked, also register it as a known observable
+                if unpacked_target and unpacked_host and unpacked_target not in seen_raw:
+                    seen_raw.add(unpacked_target)
+                    try:
+                        target_split = urlsplit(unpacked_target)
+                        result.message.urls.append(
+                            URLMetadata(
+                                raw=unpacked_target,
+                                scheme=target_split.scheme,
+                                host=target_split.hostname,
+                                path=target_split.path or None,
+                                query_present=bool(target_split.query),
+                                is_https=target_split.scheme.lower() == "https",
+                                parse_status="parsed",
+                                is_obfuscated=is_obfuscated,
+                            )
+                        )
+                    except Exception:
+                        pass
 
             except Exception:
                 result.warnings.append(

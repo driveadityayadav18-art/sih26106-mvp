@@ -88,6 +88,49 @@ export function isDomainTrusted(domain: string): boolean {
   );
 }
 
+export function unpackTrampolineUrl(url: string): {
+  isTrampoline: boolean;
+  isObfuscated: boolean;
+  targetDomain: string;
+  targetUrl: string;
+} {
+  if (!url) return { isTrampoline: false, isObfuscated: false, targetDomain: "", targetUrl: "" };
+  try {
+    const isObf = /%[0-9a-fA-F]{2}/.test(url);
+    const parsed = new URL(url);
+    for (const param of ["q", "url", "dest", "target", "redirect", "r", "link", "goto"]) {
+      const val = parsed.searchParams.get(param);
+      if (val) {
+        let curr = val.trim();
+        for (let i = 0; i < 3; i++) {
+          try {
+            const unq = decodeURIComponent(curr);
+            if (unq !== curr) {
+              curr = unq;
+            } else {
+              break;
+            }
+          } catch {
+            break;
+          }
+        }
+        if (/^https?:\/\//i.test(curr)) {
+          const targetHost = extractDomain(curr);
+          return {
+            isTrampoline: true,
+            isObfuscated: isObf,
+            targetDomain: targetHost,
+            targetUrl: curr,
+          };
+        }
+      }
+    }
+    return { isTrampoline: false, isObfuscated: isObf, targetDomain: "", targetUrl: "" };
+  } catch {
+    return { isTrampoline: false, isObfuscated: false, targetDomain: "", targetUrl: "" };
+  }
+}
+
 export function ObservableUrlTable({
   urls = [],
   fromAddress,
@@ -107,6 +150,16 @@ export function ObservableUrlTable({
   const fromDomain = extractEmailDomain(fromAddress);
 
   const getUrlStatus = (url: string): "SUSPICIOUS_URL" | "CLEAN" => {
+    const trampoline = unpackTrampolineUrl(url);
+    if (trampoline.isTrampoline && trampoline.targetDomain) {
+      if (
+        !isDomainTrusted(trampoline.targetDomain) &&
+        (!fromDomain || (trampoline.targetDomain !== fromDomain && !trampoline.targetDomain.endsWith("." + fromDomain)))
+      ) {
+        return "SUSPICIOUS_URL";
+      }
+    }
+
     const domain = extractDomain(url);
     if (!domain) return "SUSPICIOUS_URL";
 
@@ -155,6 +208,9 @@ export function ObservableUrlTable({
   const selectedDomain = selectedUrl ? extractDomain(selectedUrl) : "";
   const selectedStatus = selectedUrl ? getUrlStatus(selectedUrl) : "CLEAN";
   const selectedDefanged = selectedUrl ? defangUrl(selectedUrl) : "";
+  const selectedTrampoline = selectedUrl
+    ? unpackTrampolineUrl(selectedUrl)
+    : { isTrampoline: false, isObfuscated: false, targetDomain: "", targetUrl: "" };
 
   const selectedGeo = selectedDomain
     ? infrastructure?.geo?.find(
@@ -202,6 +258,7 @@ export function ObservableUrlTable({
               const status = getUrlStatus(url);
               const defanged = defangUrl(url);
               const isCopied = copiedIndex === globalIdx;
+              const trampoline = unpackTrampolineUrl(url);
 
               return (
                 <TableRow
@@ -229,12 +286,24 @@ export function ObservableUrlTable({
 
                   {/* URL Column: strictly mono for raw URL string */}
                   <TableCell className="max-w-lg">
-                    <span
-                      className="font-mono text-xs text-[#FDFBD4] truncate max-w-lg block select-all cursor-text"
-                      title={defanged}
-                    >
-                      {defanged}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span
+                        className="font-mono text-xs text-[#FDFBD4] truncate max-w-lg block select-all cursor-text"
+                        title={defanged}
+                      >
+                        {defanged}
+                      </span>
+                      {trampoline.isTrampoline && (
+                        <div className="flex items-center gap-1 text-[10px] font-mono text-[#E06D53]">
+                          <span className="font-sans font-semibold uppercase tracking-wider text-[9px] bg-[#E06D53]/20 px-1 py-0.5 rounded border border-[#E06D53]/40 text-[#E06D53] shrink-0">
+                            Unmasked Destination:
+                          </span>
+                          <span className="truncate max-w-sm" title={defangUrl(trampoline.targetUrl)}>
+                            {defangUrl(trampoline.targetUrl)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
 
                   {/* Context / Location Column */}
@@ -368,6 +437,45 @@ export function ObservableUrlTable({
                   OBSERVED IN BODY
                 </span>
               </div>
+
+              {/* Unmasked Trampoline Phishing Destination Card */}
+              {selectedTrampoline.isTrampoline && (
+                <div className="p-4 rounded-lg bg-[#2A1715] border border-[#E06D53]/60 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#E06D53] flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      Unmasked Phishing Destination (Trampoline Wrapper)
+                    </span>
+                    <button
+                      onClick={() =>
+                        handleDrawerCopy(
+                          defangUrl(selectedTrampoline.targetUrl),
+                          "unmasked"
+                        )
+                      }
+                      className="inline-flex items-center gap-1 text-[11px] font-sans font-medium text-[#E06D53] hover:text-[#FDFBD4] cursor-pointer"
+                    >
+                      {copiedDrawerType === "unmasked" ? (
+                        <>
+                          <Check className="w-3 h-3 text-[#7EC876]" />
+                          <span className="text-[#7EC876]">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copy Destination</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="p-3 bg-[#1A0F0D] border border-[#E06D53]/30 rounded-lg font-mono text-xs text-[#FDFBD4] break-all select-all leading-relaxed">
+                    {defangUrl(selectedTrampoline.targetUrl)}
+                  </div>
+                  <p className="text-[11px] font-sans text-zinc-300">
+                    Host &apos;<span className="font-mono text-zinc-200">{selectedDomain}</span>&apos; was utilized as an open redirect trampoline to bypass standard URL perimeter filters and route victims to unaligned host &apos;<span className="font-mono text-[#FDFBD4]">{selectedTrampoline.targetDomain}</span>&apos;.
+                  </p>
+                </div>
+              )}
 
               {/* Defanged Payload Display */}
               <div className="space-y-2">

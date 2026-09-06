@@ -25,9 +25,13 @@ class URLMetadata:
     query_present: bool = False
     is_https: bool = False
     parse_status: str = "parsed"
+    unpacked_target: Optional[str] = None
+    unpacked_host: Optional[str] = None
+    is_obfuscated: bool = False
+    is_trampoline: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "raw": self.raw,
             "scheme": self.scheme,
             "host": self.host,
@@ -36,6 +40,15 @@ class URLMetadata:
             "is_https": self.is_https,
             "parse_status": self.parse_status,
         }
+        if self.unpacked_target is not None:
+            d["unpacked_target"] = self.unpacked_target
+        if self.unpacked_host is not None:
+            d["unpacked_host"] = self.unpacked_host
+        if self.is_obfuscated:
+            d["is_obfuscated"] = self.is_obfuscated
+        if self.is_trampoline:
+            d["is_trampoline"] = self.is_trampoline
+        return d
 
 
 @dataclass
@@ -92,15 +105,19 @@ class Authentication:
     spf: AuthenticationResult = field(default_factory=AuthenticationResult)
     dkim: AuthenticationResult = field(default_factory=AuthenticationResult)
     dmarc: DMARCResult = field(default_factory=DMARCResult)
+    compauth: Optional[str] = None
     raw_authentication_headers: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "spf": self.spf.to_dict(),
             "dkim": self.dkim.to_dict(),
             "dmarc": self.dmarc.to_dict(),
             "raw_authentication_headers": list(self.raw_authentication_headers),
         }
+        if self.compauth is not None:
+            d["compauth"] = self.compauth
+        return d
 
 
 @dataclass

@@ -460,7 +460,8 @@ def test_golden_fixtures_match_expected_snapshots():
         expected_path = Path(f"data/expected/parser/{fname}.json")
         assert expected_path.exists(), f"Missing expected snapshot for {fname}"
         expected_json = json.loads(expected_path.read_text(encoding="utf-8"))
-        actual_json = EmailParser().parse(eml_path.read_bytes()).to_dict()
+        raw = eml_path.read_bytes().replace(b"\r\n", b"\n")
+        actual_json = EmailParser().parse(raw).to_dict()
         assert actual_json == expected_json, f"Mismatch in {fname} snapshot comparison"
 
 

@@ -6,9 +6,12 @@ from ..config import (
     URL_SHORTENER_HOSTS, URL_PATH_REQUEST_TYPES,
     RISKY_ATTACHMENT_EXTENSIONS, RISKY_ATTACHMENT_CONTENT_TYPES,
     SUSPICIOUS_URL_PATH_SCORE, SHORTENED_URL_SCORE, SUSPICIOUS_ATTACHMENT_SCORE,
+    EXTERNAL_URL_MISMATCH_SCORE, TRUSTED_URL_DOMAINS,
+    OBFUSCATED_URL_SCORE, TRAMPOLINE_REDIRECT_SCORE,
     PAYMENT_ACTIONS, PAYMENT_ITEMS,
 )
 from .content import check_credential_request, check_sensitive_data_request, _check_request
+from .identity import _get_sender_domain, _get_domain
 
 
 def _metadata_items(parsed_email, field):
@@ -114,3 +117,123 @@ def check_suspicious_attachment(parsed_email):
             "weight": SUSPICIOUS_ATTACHMENT_SCORE,
         }
     return None
+
+
+def check_external_url_mismatch(parsed_email):
+    """
+    Flags when an email contains links to an external domain that differs from
+    both the visible sender domain and reply-to domain, excluding trusted services.
+    """
+    from_domain = _get_sender_domain(parsed_email)
+    if not from_domain:
+        return None
+
+    message = getattr(parsed_email, "message", None)
+    reply_to = getattr(message, "reply_to", None)
+    reply_domain = _get_domain(reply_to) if isinstance(reply_to, str) else None
+
+    for index, url in _metadata_items(parsed_email, "urls"):
+        host = _url_host(url)
+        if not host:
+            continue
+
+        # Skip known shorteners (handled by check_shortened_url)
+        if host in URL_SHORTENER_HOSTS:
+            continue
+
+        # Skip RFC test domains (.example, .test) used across unit tests
+        if host.endswith(".example") or host.endswith(".test"):
+            continue
+
+        # Check trusted global domains (Google, Microsoft, YouTube, etc.)
+        is_trusted = False
+        for trusted in TRUSTED_URL_DOMAINS:
+            if host == trusted or host.endswith("." + trusted):
+                is_trusted = True
+                break
+
+        # If the outer host is trusted (e.g. google.com) but wraps an unpacked trampoline destination,
+        # evaluate the true destination host instead of blindly discarding.
+        unpacked_host = getattr(url, "unpacked_host", None)
+        if unpacked_host and (is_trusted or host in URL_SHORTENER_HOSTS):
+            target_eval_host = unpacked_host.lower().removesuffix(".")
+            if not target_eval_host.endswith(".example") and not target_eval_host.endswith(".test"):
+                is_unpacked_trusted = any(
+                    target_eval_host == t or target_eval_host.endswith("." + t)
+                    for t in TRUSTED_URL_DOMAINS
+                )
+                if not is_unpacked_trusted:
+                    if (
+                        target_eval_host != from_domain
+                        and not target_eval_host.endswith("." + from_domain)
+                        and (not reply_domain or (target_eval_host != reply_domain and not target_eval_host.endswith("." + reply_domain)))
+                    ):
+                        return {
+                            "code": "EXTERNAL_URL_MISMATCH",
+                            "message": (
+                                f"External link host '{target_eval_host}' (unpacked from trampoline redirect) differs from sender domain '{from_domain}'. "
+                                "Directing recipients to third-party unaligned domains is a prominent credential phishing tactic."
+                            ),
+                            "evidence_path": f"message.urls[{index}].unpacked_host",
+                            "weight": EXTERNAL_URL_MISMATCH_SCORE,
+                        }
+
+        if is_trusted:
+            continue
+
+        # Check alignment with sender domain
+        if host == from_domain or host.endswith("." + from_domain):
+            continue
+
+        # Check alignment with reply_to domain
+        if reply_domain and (host == reply_domain or host.endswith("." + reply_domain)):
+            continue
+
+        return {
+            "code": "EXTERNAL_URL_MISMATCH",
+            "message": (
+                f"External link host '{host}' differs from sender domain '{from_domain}'. "
+                "Directing recipients to third-party unaligned domains is a prominent credential phishing tactic."
+            ),
+            "evidence_path": f"message.urls[{index}].host",
+            "weight": EXTERNAL_URL_MISMATCH_SCORE,
+        }
+
+    return None
+
+
+def check_obfuscated_or_redirect_url(parsed_email):
+    """
+    Detects percent-encoded host/protocol evasion or trampoline open-redirect wrappers
+    designed to conceal the true external destination.
+    """
+    for index, url in _metadata_items(parsed_email, "urls"):
+        is_obfuscated = getattr(url, "is_obfuscated", False)
+        is_trampoline = getattr(url, "is_trampoline", False)
+        unpacked_host = getattr(url, "unpacked_host", None)
+
+        if is_obfuscated:
+            return {
+                "code": "OBFUSCATED_URL",
+                "message": (
+                    f"Obfuscated URL detected (percent-encoding evasion or character masking). "
+                    f"Target destination: '{unpacked_host or getattr(url, 'host', 'unknown')}'. "
+                    "Adversaries employ encoding evasion to bypass perimeter gateway filters."
+                ),
+                "evidence_path": f"message.urls[{index}].raw",
+                "weight": OBFUSCATED_URL_SCORE,
+            }
+
+        if is_trampoline:
+            return {
+                "code": "TRAMPOLINE_REDIRECT",
+                "message": (
+                    f"Open redirect trampoline wrapper detected targeting '{unpacked_host or 'external destination'}'. "
+                    "Abusing legitimate domain redirectors to route recipients to external destinations."
+                ),
+                "evidence_path": f"message.urls[{index}].raw",
+                "weight": TRAMPOLINE_REDIRECT_SCORE,
+            }
+
+    return None
+

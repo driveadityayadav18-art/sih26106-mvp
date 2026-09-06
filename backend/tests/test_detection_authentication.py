@@ -1,15 +1,19 @@
 from backend.detection.rules.authentication import (
     check_spf_fail,
+    check_spf_softfail,
+    check_compauth_fail,
     check_dkim_fail_or_none,
-    check_dmarc_fail
+    check_dmarc_fail,
 )
 
 from backend.parser.models import ParsedEmail
 
 from backend.detection.config import (
     SPF_FAIL_SCORE,
+    SPF_SOFTFAIL_SCORE,
+    COMPAUTH_FAIL_SCORE,
     DKIM_FAIL_OR_NONE_SCORE,
-    DMARC_FAIL_SCORE
+    DMARC_FAIL_SCORE,
 )
 
 
@@ -113,3 +117,21 @@ def test_dmarc_unknown():
     result = check_dmarc_fail(email)
 
     assert result is None
+
+
+def test_spf_softfail():
+    email = ParsedEmail()
+    email.authentication.spf.result = "softfail"
+    result = check_spf_softfail(email)
+    assert result is not None
+    assert result["code"] == "AUTH_SPF_SOFTFAIL"
+    assert result["weight"] == SPF_SOFTFAIL_SCORE
+
+
+def test_compauth_fail():
+    email = ParsedEmail()
+    email.authentication.compauth = "fail"
+    result = check_compauth_fail(email)
+    assert result is not None
+    assert result["code"] == "AUTH_COMPAUTH_FAIL"
+    assert result["weight"] == COMPAUTH_FAIL_SCORE

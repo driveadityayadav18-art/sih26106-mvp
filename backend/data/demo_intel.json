@@ -8,5 +8,15 @@
         "country": "Serverville",
         "city": "Datacenter",
         "provider": "demo_cache"
+    },
+    "41.85.176.17": {
+        "country": "Kenya",
+        "city": "Nairobi",
+        "provider": "Africa Online / Autonomous System AS36914"
+    },
+    "best-pharma-express.zone": {
+        "country": "Russia",
+        "city": "Moscow",
+        "provider": "Bulletproof Hosting Cluster"
     }
 }

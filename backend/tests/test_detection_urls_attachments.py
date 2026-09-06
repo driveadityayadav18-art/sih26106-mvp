@@ -154,3 +154,60 @@ def test_configurable_lists(monkeypatch):
     assert rules.check_shortened_url(email)
     assert rules.check_suspicious_url_path(email)
     assert rules.check_suspicious_attachment(email)
+
+
+def test_check_obfuscated_url():
+    email = ParsedEmail()
+    email.message.urls = [
+        URLMetadata(
+            raw="https://www.google.com/url?q=h%74%74p%3A%2F%2Fevil.example",
+            scheme="https",
+            host="www.google.com",
+            is_obfuscated=True,
+            is_trampoline=True,
+            unpacked_host="evil.example",
+            unpacked_target="http://evil.example",
+        )
+    ]
+    result = rules.check_obfuscated_or_redirect_url(email)
+    assert result is not None
+    assert result["code"] == "OBFUSCATED_URL"
+    assert result["weight"] == 20
+
+
+def test_check_trampoline_redirect_without_obfuscation():
+    email = ParsedEmail()
+    email.message.urls = [
+        URLMetadata(
+            raw="https://www.google.com/url?q=http://target.xyz",
+            scheme="https",
+            host="www.google.com",
+            is_obfuscated=False,
+            is_trampoline=True,
+            unpacked_host="target.xyz",
+            unpacked_target="http://target.xyz",
+        )
+    ]
+    result = rules.check_obfuscated_or_redirect_url(email)
+    assert result is not None
+    assert result["code"] == "TRAMPOLINE_REDIRECT"
+    assert result["weight"] == 15
+
+
+def test_external_url_mismatch_unpacks_trampoline():
+    email = ParsedEmail()
+    email.message.from_.address = "sender@legit.org"
+    email.message.urls = [
+        URLMetadata(
+            raw="https://www.google.com/url?q=http://phish-site.zone",
+            scheme="https",
+            host="google.com",
+            is_trampoline=True,
+            unpacked_host="phish-site.zone",
+            unpacked_target="http://phish-site.zone",
+        )
+    ]
+    result = rules.check_external_url_mismatch(email)
+    assert result is not None
+    assert result["code"] == "EXTERNAL_URL_MISMATCH"
+    assert "phish-site.zone" in result["message"]

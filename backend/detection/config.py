@@ -3,14 +3,18 @@
 
 # Authentication
 SPF_FAIL_SCORE = 10
+SPF_SOFTFAIL_SCORE = 8
+COMPAUTH_FAIL_SCORE = 10
 DKIM_FAIL_OR_NONE_SCORE = 8
 DMARC_FAIL_SCORE = 12
+AUTH_ANOMALY_SCORE = 15
 
 # Identity
 REPLY_TO_MISMATCH_SCORE = 18
 DISPLAY_NAME_DOMAIN_MISMATCH_SCORE = 10
 LOOKALIKE_DOMAIN_SCORE = 20
 PUNYCODE_DOMAIN_SCORE = 10
+RETURN_PATH_ANOMALY_SCORE = 25
 
 # Safe demo domains for the lookalike rule to compare against.
 # Being on this list does not mean every email from the domain is safe.
@@ -68,6 +72,22 @@ NEGATIONS = {"no", "not", "never", "don't", "dont", "cannot", "can't", "shouldn'
 SUSPICIOUS_URL_PATH_SCORE = 10
 SHORTENED_URL_SCORE = 5
 SUSPICIOUS_ATTACHMENT_SCORE = 12
+EXTERNAL_URL_MISMATCH_SCORE = 25
+OBFUSCATED_URL_SCORE = 20
+TRAMPOLINE_REDIRECT_SCORE = 15
+
+TRUSTED_URL_DOMAINS = {
+    "youtube.com", "youtu.be",
+    "twitter.com", "x.com",
+    "linkedin.com",
+    "techcrunch.com",
+    "google.com", "googleapis.com", "gstatic.com",
+    "github.com",
+    "microsoft.com", "office.com", "live.com",
+    "apple.com", "icloud.com",
+    "facebook.com", "instagram.com",
+    "beehiiv.com", "mailchimp.com", "substack.com",
+}
 
 # Exact host matches only; this is a small prototype list, not reputation data.
 URL_SHORTENER_HOSTS = ("bit.ly", "tinyurl.com", "t.co")

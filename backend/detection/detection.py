@@ -1,7 +1,10 @@
 from backend.detection.rules.authentication import (
     check_spf_fail,
+    check_spf_softfail,
+    check_compauth_fail,
     check_dkim_fail_or_none,
     check_dmarc_fail,
+    check_authentication_anomaly,
 )
 from backend.detection.config import (
     LOW_MAX_SCORE,
@@ -13,6 +16,7 @@ from backend.detection.rules.identity import (
     check_display_name_domain_mismatch,
     check_lookalike_domain,
     check_punycode_domain,
+    check_return_path_anomaly,
     _get_domain,
     _get_sender_domain,
 )
@@ -25,6 +29,8 @@ from backend.detection.rules.urls_attachments import (
     check_suspicious_url_path,
     check_shortened_url,
     check_suspicious_attachment,
+    check_external_url_mismatch,
+    check_obfuscated_or_redirect_url,
 )
 from backend.detection.context import DetectionContext
 from backend.detection.rules.headers import check_header_anomaly
@@ -63,8 +69,11 @@ class ThreatDetector:
         # Authentication
         for rule in (
             check_spf_fail,
+            check_spf_softfail,
+            check_compauth_fail,
             check_dkim_fail_or_none,
             check_dmarc_fail,
+            check_authentication_anomaly,
         ):
             result = rule(parsed_email)
             if result:
@@ -77,6 +86,7 @@ class ThreatDetector:
             check_display_name_domain_mismatch,
             check_lookalike_domain,
             check_punycode_domain,
+            check_return_path_anomaly,
         ):
             result = rule(parsed_email)
             if result:
@@ -99,6 +109,8 @@ class ThreatDetector:
             check_suspicious_url_path,
             check_shortened_url,
             check_suspicious_attachment,
+            check_external_url_mismatch,
+            check_obfuscated_or_redirect_url,
         ):
             result = rule(parsed_email)
             if result:

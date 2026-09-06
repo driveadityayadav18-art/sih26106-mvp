@@ -306,6 +306,42 @@ class TestRiskDetectionEngine(unittest.TestCase):
             self.assertEqual(data["ai_review"]["adjusted_score"], 95)
             self.assertEqual(data["ai_review"]["adjusted_band"], "HIGH")
 
+    def test_sample_1_phishing_triggers_high_risk_and_tier_2_llm(self):
+        fixture_path = os.path.join(os.path.dirname(__file__), "..", "data", "fixtures", "sample-1.eml")
+        with open(fixture_path, "rb") as f:
+            content = f.read()
+
+        parsed = parse_email(content)
+        risk = analyze_risk(parsed)
+        self.assertGreaterEqual(risk["score"], 70)
+        self.assertEqual(risk["band"], "HIGH")
+        codes = [rc["code"] for rc in risk["reason_codes"]]
+        self.assertIn("EXTERNAL_URL_MISMATCH", codes)
+        self.assertIn("RETURN_PATH_ANOMALY", codes)
+        self.assertIn("AUTH_ANOMALY", codes)
+        self.assertIn("AUTH_DKIM_FAIL_OR_NONE", codes)
+
+        mock_response = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = json.dumps({
+            "is_false_positive": False,
+            "adjusted_score": 90,
+            "adjusted_band": "HIGH",
+            "analyst_summary": "Confirmed malicious Brazilian banking phishing lure.",
+        })
+        mock_response.choices = [mock_choice]
+
+        with patch.object(main.groq_client.chat.completions, "create", return_value=mock_response):
+            upload_file = UploadFile(file=io.BytesIO(content), filename="sample-1.eml")
+            data = asyncio.run(create_case(upload_file))
+
+            self.assertGreaterEqual(data["risk"]["score"], 70)
+            self.assertEqual(data["risk"]["band"], "HIGH")
+            self.assertIsNotNone(data["ai_review"])
+            self.assertFalse(data["ai_review"]["is_false_positive"])
+            self.assertEqual(data["ai_review"]["adjusted_score"], 90)
+
 
 if __name__ == "__main__":
     unittest.main()
+
