@@ -1,0 +1,105 @@
+{
+  "message": {
+    "subject": "Test Malformed Email",
+    "from": {
+      "name": "Broken Sender",
+      "address": "malformed-address-without-at"
+    },
+    "to": [],
+    "cc": [],
+    "reply_to": "broken-destination",
+    "return_path": null,
+    "message_id": "",
+    "date": "Not-A-Valid-RFC-Date",
+    "body_text": "This is a synthetic malformed test message designed to verify parser resilience.\nMissing boundary closures, invalid dates, malformed addresses, and broken Received lines.",
+    "body_html_present": false,
+    "urls": [],
+    "attachments": []
+  },
+  "authentication": {
+    "spf": {
+      "result": "unknown",
+      "source": "missing",
+      "timestamp": null
+    },
+    "dkim": {
+      "result": "unknown",
+      "source": "missing",
+      "timestamp": null
+    },
+    "dmarc": {
+      "result": "unknown",
+      "aligned": null,
+      "header_from_domain": null,
+      "source": "missing",
+      "timestamp": null
+    },
+    "raw_authentication_headers": []
+  },
+  "trace": {
+    "hops": [
+      {
+        "index": 1,
+        "raw": "from [invalid..ip..address] by ;",
+        "from_host": "[invalid..ip..address]",
+        "from_ip": null,
+        "by_host": ";",
+        "by_ip": null,
+        "with_protocol": null,
+        "timestamp": null,
+        "parse_status": "parsed",
+        "trust": "unknown"
+      },
+      {
+        "index": 2,
+        "raw": ";;;;;",
+        "from_host": null,
+        "from_ip": null,
+        "by_host": null,
+        "by_ip": null,
+        "with_protocol": null,
+        "timestamp": null,
+        "parse_status": "unparsed",
+        "trust": "unknown"
+      }
+    ],
+    "earliest_reliable_observable": "Received hop 1",
+    "limitations": [
+      "Received headers are observable message-header evidence and are not independently verified."
+    ]
+  },
+  "warnings": [
+    {
+      "code": "MALFORMED_ADDRESS",
+      "message": "An email address could not be normalized."
+    },
+    {
+      "code": "MALFORMED_ADDRESS",
+      "message": "An email address could not be normalized."
+    },
+    {
+      "code": "MALFORMED_ADDRESS",
+      "message": "An email address could not be normalized."
+    },
+    {
+      "code": "MALFORMED_DATE",
+      "message": "Date header could not be parsed reliably."
+    },
+    {
+      "code": "MISSING_AUTHENTICATION_RESULTS",
+      "message": "No Authentication-Results or Received-SPF header was observed."
+    },
+    {
+      "code": "MALFORMED_RECEIVED_HEADER",
+      "message": "Received hop 2 contains an unparseable timestamp."
+    },
+    {
+      "code": "MALFORMED_RECEIVED_HEADER",
+      "message": "Received hop 2 could not be parsed."
+    }
+  ],
+  "artifact": {
+    "sha256": "77020655b76f646008df4921fbbcd6fe6db6b1707502cdcaa94bf7d5a379888c",
+    "byte_length": 548
+  }
+}

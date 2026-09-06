@@ -1,0 +1,110 @@
+{
+  "message": {
+    "subject": "URGENT: Update vendor bank details for pending disbursement",
+    "from": {
+      "name": "AICTE Accounts",
+      "address": "accounts@aicte-demo.example"
+    },
+    "to": [
+      {
+        "name": "Finance Team",
+        "address": "finance@victim-org.example"
+      }
+    ],
+    "cc": [],
+    "reply_to": "payment-update@aicte-payments.example",
+    "return_path": "bounce@mailer-a.example",
+    "message_id": "<demo-184@mailer-a.example>",
+    "date": "2026-08-25T10:00:00+00:00",
+    "body_text": "[SYNTHETIC DEMO ARTIFACT - FOR FORENSIC INVESTIGATION TESTING ONLY]\n\nAttention Accounts Payable,\n\nDue to a banking reconciliation audit, our primary disbursement account has changed.\nPlease update our beneficiary banking details immediately to prevent settlement cancellation:\n\nhttps://aicte-payments.example/portal/update?ref=SIH26106-VEND\n\nFailure to update before 17:00 IST will result in delayed disbursement.\n\nRegards,\nAICTE Accounts Division\n",
+    "body_html_present": false,
+    "urls": [
+      {
+        "raw": "https://aicte-payments.example/portal/update?ref=SIH26106-VEND",
+        "scheme": "https",
+        "host": "aicte-payments.example",
+        "path": "/portal/update",
+        "query_present": true,
+        "is_https": true,
+        "parse_status": "parsed"
+      }
+    ],
+    "attachments": []
+  },
+  "authentication": {
+    "spf": {
+      "result": "fail",
+      "source": "header",
+      "timestamp": null
+    },
+    "dkim": {
+      "result": "none",
+      "source": "header",
+      "timestamp": null
+    },
+    "dmarc": {
+      "result": "fail",
+      "aligned": null,
+      "header_from_domain": "aicte-demo.example",
+      "source": "header",
+      "timestamp": null
+    },
+    "raw_authentication_headers": [
+      "mx.victim-org.example; dkim=none; spf=fail (mx.victim-org.example: domain of bounce@mailer-a.example does not designate 198.51.100.25 as permitted sender) smtp.mailfrom=bounce@mailer-a.example; dmarc=fail (p=reject sp=reject) header.from=aicte-demo.example"
+    ]
+  },
+  "trace": {
+    "hops": [
+      {
+        "index": 1,
+        "raw": "from client-workstation.example (client-node [198.51.100.10]) by mailer-a.example [198.51.100.25] with ESMTP id 9B7cL123 for <finance@victim-org.example>; Fri, 25 Aug 2026 09:59:58 +0000",
+        "from_host": "client-workstation.example",
+        "from_ip": "198.51.100.10",
+        "by_host": "mailer-a.example",
+        "by_ip": "198.51.100.25",
+        "with_protocol": "ESMTP",
+        "timestamp": "2026-08-25T09:59:58+00:00",
+        "parse_status": "parsed",
+        "trust": "unknown"
+      },
+      {
+        "index": 2,
+        "raw": "from mailer-a.example (mailer-a.example [198.51.100.25]) by relay-in.victim-org.example [203.0.113.50] with ESMTPS id 4V8xK901z for <finance@victim-org.example>; Fri, 25 Aug 2026 10:00:02 +0000",
+        "from_host": "mailer-a.example",
+        "from_ip": "198.51.100.25",
+        "by_host": "relay-in.victim-org.example",
+        "by_ip": "203.0.113.50",
+        "with_protocol": "ESMTPS",
+        "timestamp": "2026-08-25T10:00:02+00:00",
+        "parse_status": "parsed",
+        "trust": "unknown"
+      }
+    ],
+    "earliest_reliable_observable": "Received hop 1",
+    "limitations": [
+      "Received headers are observable message-header evidence and are not independently verified."
+    ]
+  },
+  "warnings": [
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 1 contains private or reserved IP 198.51.100.10."
+    },
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 1 contains private or reserved IP 198.51.100.25."
+    },
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 2 contains private or reserved IP 198.51.100.25."
+    },
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 2 contains private or reserved IP 203.0.113.50."
+    }
+  ],
+  "artifact": {
+    "sha256": "362a12ec045b866b7c29c3aa17da6eca5c328af9ede381bc560ff62b13056229",
+    "byte_length": 1533
+  }
+}

@@ -1,0 +1,33 @@
+From: "Internal IT Operations" <it-support@trusted-org.example>
+To: "All Employees" <all-staff@trusted-org.example>
+Reply-To: "Internal IT Operations" <it-support@trusted-org.example>
+Return-Path: <it-support@trusted-org.example>
+Subject: Scheduled Maintenance Window: Internal LDAP and VPN Gateway
+Message-ID: <maint-2026-08@trusted-org.example>
+Date: Fri, 25 Aug 2026 08:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=trusted-org.example; s=s2026; h=from:to:subject:date:message-id; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=; b=dGVzdGRraW1zaWduYXR1cmU=
+Authentication-Results: mx.trusted-org.example;
+ dkim=pass (2048-bit key) header.d=trusted-org.example header.i=@trusted-org.example header.b=dGVzdG;
+ spf=pass (mx.trusted-org.example: domain of it-support@trusted-org.example designates 198.51.100.100 as permitted sender) smtp.mailfrom=it-support@trusted-org.example;
+ dmarc=pass (p=reject sp=reject) header.from=trusted-org.example
+Received: from mail-out.trusted-org.example (mail-out.trusted-org.example [198.51.100.100])
+ by mx.trusted-org.example [198.51.100.101] with ESMTPS id 1A2B3C4D
+ for <all-staff@trusted-org.example>; Fri, 25 Aug 2026 08:00:02 +0000
+
+[SYNTHETIC DEMO ARTIFACT - LEGITIMATE BASELINE EMAIL]
+
+Team,
+
+Please be advised that the corporate VPN gateway will undergo scheduled security patching
+this Saturday from 01:00 to 03:00 UTC. During this window, access to intranet portals
+will experience intermittent disruption.
+
+For documentation, refer to:
+https://intranet.trusted-org.example/kb/maintenance-august-2026
+
+No action is required on user accounts.
+
+Regards,
+IT Infrastructure Team

@@ -1,0 +1,15 @@
+From: "Broken Sender" <malformed-address-without-at>
+Reply-To: broken-destination
+Return-Path: <>
+Subject: =?UTF-8?B?VGVzdCBNYWxmb3JtZWQgRW1haWw=?=
+Date: Not-A-Valid-RFC-Date
+Message-ID: 
+Received: ;;;;;
+Received: from [invalid..ip..address] by ;
+Content-Type: multipart/mixed; boundary="nonexistent_boundary"
+
+--nonexistent_boundary
+Content-Type: text/plain; charset="utf-8"
+
+This is a synthetic malformed test message designed to verify parser resilience.
+Missing boundary closures, invalid dates, malformed addresses, and broken Received lines.

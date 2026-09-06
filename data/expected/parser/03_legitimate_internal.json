@@ -1,0 +1,91 @@
+{
+  "message": {
+    "subject": "Scheduled Maintenance Window: Internal LDAP and VPN Gateway",
+    "from": {
+      "name": "Internal IT Operations",
+      "address": "it-support@trusted-org.example"
+    },
+    "to": [
+      {
+        "name": "All Employees",
+        "address": "all-staff@trusted-org.example"
+      }
+    ],
+    "cc": [],
+    "reply_to": "it-support@trusted-org.example",
+    "return_path": "it-support@trusted-org.example",
+    "message_id": "<maint-2026-08@trusted-org.example>",
+    "date": "2026-08-25T08:00:00+00:00",
+    "body_text": "[SYNTHETIC DEMO ARTIFACT - LEGITIMATE BASELINE EMAIL]\n\nTeam,\n\nPlease be advised that the corporate VPN gateway will undergo scheduled security patching\nthis Saturday from 01:00 to 03:00 UTC. During this window, access to intranet portals\nwill experience intermittent disruption.\n\nFor documentation, refer to:\nhttps://intranet.trusted-org.example/kb/maintenance-august-2026\n\nNo action is required on user accounts.\n\nRegards,\nIT Infrastructure Team\n",
+    "body_html_present": false,
+    "urls": [
+      {
+        "raw": "https://intranet.trusted-org.example/kb/maintenance-august-2026",
+        "scheme": "https",
+        "host": "intranet.trusted-org.example",
+        "path": "/kb/maintenance-august-2026",
+        "query_present": false,
+        "is_https": true,
+        "parse_status": "parsed"
+      }
+    ],
+    "attachments": []
+  },
+  "authentication": {
+    "spf": {
+      "result": "pass",
+      "source": "header",
+      "timestamp": null
+    },
+    "dkim": {
+      "result": "pass",
+      "source": "header",
+      "timestamp": null
+    },
+    "dmarc": {
+      "result": "pass",
+      "aligned": null,
+      "header_from_domain": "trusted-org.example",
+      "source": "header",
+      "timestamp": null
+    },
+    "raw_authentication_headers": [
+      "mx.trusted-org.example; dkim=pass (2048-bit key) header.d=trusted-org.example header.i=@trusted-org.example header.b=dGVzdG; spf=pass (mx.trusted-org.example: domain of it-support@trusted-org.example designates 198.51.100.100 as permitted sender) smtp.mailfrom=it-support@trusted-org.example; dmarc=pass (p=reject sp=reject) header.from=trusted-org.example",
+      "DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=trusted-org.example; s=s2026; h=from:to:subject:date:message-id; bh=47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=; b=dGVzdGRraW1zaWduYXR1cmU="
+    ]
+  },
+  "trace": {
+    "hops": [
+      {
+        "index": 1,
+        "raw": "from mail-out.trusted-org.example (mail-out.trusted-org.example [198.51.100.100]) by mx.trusted-org.example [198.51.100.101] with ESMTPS id 1A2B3C4D for <all-staff@trusted-org.example>; Fri, 25 Aug 2026 08:00:02 +0000",
+        "from_host": "mail-out.trusted-org.example",
+        "from_ip": "198.51.100.100",
+        "by_host": "mx.trusted-org.example",
+        "by_ip": "198.51.100.101",
+        "with_protocol": "ESMTPS",
+        "timestamp": "2026-08-25T08:00:02+00:00",
+        "parse_status": "parsed",
+        "trust": "unknown"
+      }
+    ],
+    "earliest_reliable_observable": "Received hop 1",
+    "limitations": [
+      "Received headers are observable message-header evidence and are not independently verified."
+    ]
+  },
+  "warnings": [
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 1 contains private or reserved IP 198.51.100.100."
+    },
+    {
+      "code": "PRIVATE_OR_RESERVED_IP_OBSERVED",
+      "message": "Received hop 1 contains private or reserved IP 198.51.100.101."
+    }
+  ],
+  "artifact": {
+    "sha256": "392183858d0fc6b878491dbe54a8b682844c08611b5461bac1bf624372d049f3",
+    "byte_length": 1704
+  }
+}
