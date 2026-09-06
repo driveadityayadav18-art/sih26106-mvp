@@ -1,0 +1,2 @@
+# Preserve byte-exact forensic fixtures across all operating systems (Windows, Linux, macOS)
+*.eml binary
