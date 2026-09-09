@@ -31,6 +31,7 @@ from backend.detection.rules.urls_attachments import (
     check_suspicious_attachment,
     check_external_url_mismatch,
     check_obfuscated_or_redirect_url,
+    check_url_ml_risk,
 )
 from backend.detection.context import DetectionContext
 from backend.detection.rules.headers import check_header_anomaly
@@ -111,6 +112,7 @@ class ThreatDetector:
             check_suspicious_attachment,
             check_external_url_mismatch,
             check_obfuscated_or_redirect_url,
+            check_url_ml_risk,
         ):
             result = rule(parsed_email)
             if result:

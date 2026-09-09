@@ -174,6 +174,36 @@ export function RelayTimeline({
                             {hop.trust}
                           </span>
                         )}
+
+                        {/* Tor Exit Node Detected Badge */}
+                        {hop.is_tor && (
+                          <Badge
+                            variant="outline"
+                            className="bg-red-500/20 text-red-400 border-red-500/50 text-[10px] py-0.5 px-2.5 font-bold tracking-wide shadow-sm shadow-red-500/20 flex items-center gap-1"
+                          >
+                            <span>⚠️</span> TOR EXIT NODE DETECTED (High Risk)
+                            {hop.confidence_score ? (
+                              <span className="opacity-80 font-mono text-[9px] font-normal ml-0.5">
+                                ({Math.round(hop.confidence_score * 100)}%)
+                              </span>
+                            ) : null}
+                          </Badge>
+                        )}
+
+                        {/* Public VPN / Datacenter Proxy Badge */}
+                        {hop.is_proxy && !hop.is_tor && (
+                          <Badge
+                            variant="outline"
+                            className="bg-amber-500/15 text-amber-300 border-amber-500/40 text-[10px] py-0.5 px-2.5 font-semibold tracking-wide shadow-sm shadow-amber-500/10 flex items-center gap-1"
+                          >
+                            <span>🛡️</span> VPN / Datacenter Proxy
+                            {hop.confidence_score ? (
+                              <span className="opacity-80 font-mono text-[9px] font-normal ml-0.5">
+                                ({Math.round(hop.confidence_score * 100)}%)
+                              </span>
+                            ) : null}
+                          </Badge>
+                        )}
                       </div>
 
                       {/* Timestamp */}
@@ -197,7 +227,15 @@ export function RelayTimeline({
                         </div>
                         {hop.from_ip ? (
                           <div className="flex items-center gap-1.5 pt-0.5">
-                            <span className="font-mono text-[11px] px-1.5 py-0.5 bg-[#202024] text-[#FDFBD4] rounded border border-zinc-700/60 select-all">
+                            <span
+                              className={`font-mono text-[11px] px-1.5 py-0.5 rounded border select-all ${
+                                hop.is_tor
+                                  ? "bg-red-950/40 text-red-200 border-red-500/50 font-semibold"
+                                  : hop.is_proxy
+                                  ? "bg-amber-950/30 text-amber-200 border-amber-500/40"
+                                  : "bg-[#202024] text-[#FDFBD4] border-zinc-700/60"
+                              }`}
+                            >
                               {hop.from_ip}
                             </span>
                             <button

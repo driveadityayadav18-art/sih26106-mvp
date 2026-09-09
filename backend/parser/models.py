@@ -132,6 +132,10 @@ class ReceivedHop:
     timestamp: Optional[str] = None
     parse_status: str = "unparsed"
     trust: str = "unknown"
+    is_tor: bool = False
+    is_proxy: bool = False
+    anonymizer_type: str = "None"
+    confidence_score: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -145,6 +149,10 @@ class ReceivedHop:
             "timestamp": self.timestamp,
             "parse_status": self.parse_status,
             "trust": self.trust,
+            "is_tor": self.is_tor,
+            "is_proxy": self.is_proxy,
+            "anonymizer_type": self.anonymizer_type,
+            "confidence_score": self.confidence_score,
         }
 
 

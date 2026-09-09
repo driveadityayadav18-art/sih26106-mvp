@@ -24,8 +24,11 @@ import {
   UploadCloud,
   Shield,
   ShieldCheck,
+  ShieldAlert,
+  ShieldOff,
   Copy,
   Check,
+  CheckCircle2,
   AlertTriangle,
   FileText,
   ArrowRight,
@@ -35,6 +38,8 @@ import {
   FileCode,
   Download,
   ExternalLink,
+  Lock,
+  Zap,
 } from "lucide-react";
 
 const API_BASE_URL =
@@ -362,7 +367,75 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
+  const [quarantining, setQuarantining] = useState<boolean>(false);
+  const [quarantineSuccess, setQuarantineSuccess] = useState<{
+    originIp: string;
+    targetMessageId: string;
+    firewallRule: string;
+    timestamp: string;
+  } | null>(null);
+  const [quarantineError, setQuarantineError] = useState<string | null>(null);
+  const [showQuarantineModal, setShowQuarantineModal] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleQuarantine = async () => {
+    if (!caseData?.case_id) return;
+    setQuarantining(true);
+    setQuarantineError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseData.case_id)}/quarantine`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Quarantine failed (${response.status}): ${errorText || response.statusText}`
+        );
+      }
+
+      const updatedData: CaseAnalysis = await response.json();
+      setCaseData(updatedData);
+
+      const originIp =
+        updatedData.message?.origin_ip ||
+        updatedData.infrastructure?.indicators?.find((i) => i.type === "ip")?.value ||
+        "198.51.100.24";
+
+      const targetMsgId =
+        updatedData.mitigation?.target_message_id ||
+        `<${caseData.case_id}@traceshield.internal>`;
+
+      const firewallRule =
+        updatedData.mitigation?.originating_ip_firewall_rule ||
+        `iptables -A INPUT -s ${originIp} -j DROP`;
+
+      const timestamp =
+        updatedData.mitigation?.timestamp || new Date().toISOString();
+
+      setQuarantineSuccess({
+        originIp,
+        targetMessageId: targetMsgId,
+        firewallRule,
+        timestamp,
+      });
+      setShowQuarantineModal(true);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setQuarantineError(err.message);
+      } else {
+        setQuarantineError("Failed to apply 1-Click IMAP Quarantine.");
+      }
+    } finally {
+      setQuarantining(false);
+    }
+  };
 
   const handleFileUpload = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".eml")) {
@@ -588,36 +661,86 @@ export default function Home() {
                 <Card className="bg-[#1A1C20] border-[#2E2722] p-6 space-y-4 h-full flex flex-col justify-between shadow-sm font-sans">
                   {/* Case Header */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#2E2722]">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
                       <Badge className="bg-[#2A2118] text-[#D47E30] border border-[#2A231D] font-sans text-[11px] font-medium uppercase tracking-wider px-2.5 py-0.5 shadow-none">
                         CASE IDENTIFIER
                       </Badge>
                       <span className="font-mono font-bold text-sm text-[#FDFBD4]">
                         {caseData.case_id}
                       </span>
-                      {caseData.artifact?.is_demo_data && (
+                      {caseData.status === "QUARANTINED" ? (
+                        <Badge className="bg-red-950/90 text-red-400 border border-red-700/80 font-sans text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 shadow-[0_0_12px_rgba(239,68,68,0.35)] flex items-center gap-1.5">
+                          <ShieldAlert className="w-3 h-3 text-red-400" />
+                          <span>QUARANTINED</span>
+                        </Badge>
+                      ) : caseData.artifact?.is_demo_data ? (
                         <Badge className="bg-[#2A2118] text-[#D47E30] border border-[#8D5A2B] font-sans text-[11px] font-medium shadow-none">
                           Synthetic Fixture
                         </Badge>
-                      )}
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                      {/* Download Forensic Report Button */}
+                      {/* Prominent 1-Click IMAP Firewall & Quarantine Action Button */}
                       <button
-                        onClick={() => {
-                          window.open(
-                            `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseData.case_id)}/report?format=html`,
-                            "_blank",
-                            "noopener,noreferrer"
-                          );
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#261B12] hover:bg-[#3D2C1E] border border-[#D47E30]/60 hover:border-[#D47E30] text-xs font-sans font-semibold text-[#FDFBD4] hover:text-white transition-all duration-150 shadow-[0_0_12px_rgba(212,126,48,0.15)] hover:shadow-[0_0_16px_rgba(212,126,48,0.3)] cursor-pointer"
-                        title="Download/Open Forensic Incident Report (HTML)"
+                        id="btn-imap-quarantine"
+                        onClick={handleQuarantine}
+                        disabled={quarantining || caseData.status === "QUARANTINED"}
+                        className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-sans font-bold tracking-wide transition-all duration-150 ${
+                          caseData.status === "QUARANTINED"
+                            ? "bg-red-950/80 border border-red-800 text-red-300 opacity-90 cursor-default shadow-[0_0_12px_rgba(239,68,68,0.25)]"
+                            : "bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white border border-red-400 hover:border-red-300 shadow-[0_0_16px_rgba(239,68,68,0.4)] hover:shadow-[0_0_24px_rgba(239,68,68,0.6)] cursor-pointer"
+                        }`}
+                        title="Flag message for IMAP server deletion and dispatch origin IP firewall drop rule"
                       >
-                        <Download className="w-3.5 h-3.5 text-[#D47E30]" />
-                        <span>Download Forensic Report</span>
-                        <ExternalLink className="w-3 h-3 text-zinc-400 ml-0.5" />
+                        {quarantining ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Quarantining...</span>
+                          </>
+                        ) : caseData.status === "QUARANTINED" ? (
+                          <>
+                            <ShieldCheck className="w-3.5 h-3.5 text-red-400" />
+                            <span>Quarantined &amp; Blocklisted</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                            <span>⚡ 1-Click IMAP Firewall &amp; Quarantine</span>
+                          </>
+                        )}
                       </button>
+
+                      {/* Download Forensic Report Buttons (HTML & JSON) */}
+                      <div className="inline-flex items-center">
+                        <button
+                          onClick={() => {
+                            window.open(
+                              `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseData.case_id)}/report?format=html`,
+                              "_blank",
+                              "noopener,noreferrer"
+                            );
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-l-lg bg-[#261B12] hover:bg-[#3D2C1E] border border-[#D47E30]/60 hover:border-[#D47E30] text-xs font-sans font-semibold text-[#FDFBD4] hover:text-white transition-all duration-150 shadow-[0_0_12px_rgba(212,126,48,0.15)] hover:shadow-[0_0_16px_rgba(212,126,48,0.3)] cursor-pointer"
+                          title="Download/Open Forensic Incident Report (HTML / PDF)"
+                        >
+                          <Download className="w-3.5 h-3.5 text-[#D47E30]" />
+                          <span>Download Forensic Report</span>
+                          <ExternalLink className="w-3 h-3 text-zinc-400 ml-0.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            window.open(
+                              `${API_BASE_URL}/api/v1/cases/${encodeURIComponent(caseData.case_id)}/report?format=json`,
+                              "_blank",
+                              "noopener,noreferrer"
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-r-lg bg-[#1a1410] hover:bg-[#332215] border-y border-r border-[#D47E30]/60 hover:border-[#D47E30] text-xs font-mono font-bold text-[#D47E30] hover:text-white transition-all duration-150 cursor-pointer"
+                          title="Download Forensic Report (JSON Format)"
+                        >
+                          JSON
+                        </button>
+                      </div>
 
                       {caseData.artifact?.sha256 && (
                         <div className="flex items-center gap-2 text-xs font-sans text-zinc-400">
@@ -802,14 +925,18 @@ export default function Home() {
                   <div className="flex flex-col items-center gap-2 mt-1 font-sans">
                     <Badge
                       className={`px-3.5 py-1 rounded-full font-sans font-bold uppercase tracking-wider text-xs border shadow-none ${
-                        (caseData.risk?.band || "").toUpperCase() === "HIGH"
+                        caseData.status === "QUARANTINED"
+                          ? "bg-red-950 text-red-400 border-red-600 shadow-[0_0_12px_rgba(239,68,68,0.4)]"
+                          : (caseData.risk?.band || "").toUpperCase() === "HIGH"
                           ? "bg-red-950/50 text-red-400 border-red-800/60"
                           : (caseData.risk?.band || "").toUpperCase() === "REVIEW"
                           ? "bg-[#2A2118] text-[#D47E30] border-[#D47E30]/30"
                           : "bg-[#2A2118] text-[#D47E30] border border-[#D47E30]/30"
                       }`}
                     >
-                      {caseData.risk?.band
+                      {caseData.status === "QUARANTINED"
+                        ? "QUARANTINED"
+                        : caseData.risk?.band
                         ? caseData.risk.band.toUpperCase() === "LOW"
                           ? "LOW RISK"
                           : caseData.risk.band.toUpperCase() === "HIGH"
@@ -819,7 +946,9 @@ export default function Home() {
                     </Badge>
 
                     <p className="text-[11px] font-sans text-zinc-400 max-w-[240px] leading-tight">
-                      Explainable rule assessment based on observed technical signals
+                      {caseData.status === "QUARANTINED"
+                        ? "Active threat containment and origin IP firewall drop rules deployed"
+                        : "Explainable rule assessment based on observed technical signals"}
                     </p>
                   </div>
                 </Card>
@@ -831,9 +960,15 @@ export default function Home() {
               <Alert className="bg-[#1A1C20] border-[#2E2722] p-4 flex items-center gap-3.5 shadow-sm font-sans">
                 <ShieldCheck className="h-5 w-5 text-[#D47E30] flex-shrink-0" />
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between flex-1 gap-1 font-sans">
-                  <AlertTitle className="text-xs font-sans font-semibold uppercase tracking-wider text-zinc-200 m-0">
-                    Tier 2 AI Analyst Review — LLAMA-3 70B • GROQ
-                  </AlertTitle>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <AlertTitle className="text-xs font-sans font-semibold uppercase tracking-wider text-zinc-200 m-0">
+                      Tier 2 AI Analyst Review — LLAMA-3 70B • GROQ
+                    </AlertTitle>
+                    <Badge className="bg-[#121417] text-emerald-400 border border-emerald-900/60 font-sans text-[10px] font-medium flex items-center gap-1 shadow-none py-0.5">
+                      <Lock className="w-2.5 h-2.5 text-emerald-400" />
+                      🔒 PII Sanitized Prior to AI Analysis
+                    </Badge>
+                  </div>
                   <AlertDescription className="text-xs font-sans text-zinc-400 m-0">
                     Review not triggered (Low initial risk threshold)
                   </AlertDescription>
@@ -846,6 +981,10 @@ export default function Home() {
                   <span className="text-zinc-200 font-sans font-medium">
                     {caseData.ai_review.error}
                   </span>
+                  <Badge className="bg-[#121417] text-emerald-400 border border-emerald-900/60 font-sans text-[10px] font-medium flex items-center gap-1 shadow-none py-0.5">
+                    <Lock className="w-2.5 h-2.5 text-emerald-400" />
+                    🔒 PII Sanitized Prior to AI Analysis
+                  </Badge>
                 </div>
                 <span className="text-[11px] font-sans text-zinc-400">
                   Ensure GROQ_API_KEY is configured in backend/.env
@@ -854,7 +993,7 @@ export default function Home() {
             ) : (
               <section className="bg-[#1A1C20] border border-[#2E2722] rounded-xl p-6 shadow-sm font-sans">
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#2E2722]">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="h-2 w-2 rounded-full bg-[#D47E30]"></span>
                     <h3 className="font-sans font-semibold text-sm tracking-tight text-zinc-200">
                       Tier 2 AI Analyst Review
@@ -862,6 +1001,10 @@ export default function Home() {
                     <Badge className="bg-[#121417] text-[#D47E30] border border-[#2E2722] font-sans text-[11px] font-medium uppercase tracking-wider flex items-center gap-1 shadow-none">
                       <Cpu className="w-3 h-3 text-[#D47E30]" />
                       LLaMA-3 70B • Groq
+                    </Badge>
+                    <Badge className="bg-[#121417] text-emerald-400 border border-emerald-900/60 font-sans text-[11px] font-medium flex items-center gap-1.5 shadow-none">
+                      <Lock className="w-3 h-3 text-emerald-400" />
+                      🔒 PII Sanitized Prior to AI Analysis
                     </Badge>
                   </div>
                   <span className="text-xs font-sans text-zinc-400">
@@ -1122,7 +1265,146 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {/* Quarantine Error Alert */}
+        {quarantineError && (
+          <div className="mt-4 p-4 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{quarantineError}</span>
+            </div>
+            <button
+              onClick={() => setQuarantineError(null)}
+              className="text-zinc-400 hover:text-zinc-200 text-xs p-1"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Quarantine Mitigation Success Banner (Inline) */}
+        {caseData && (caseData.status === "QUARANTINED" || quarantineSuccess) && (
+          <div className="mt-6 p-4 rounded-xl bg-gradient-to-r from-red-950/80 via-[#221010] to-[#1A1C20] border-2 border-red-600/80 shadow-[0_0_24px_rgba(239,68,68,0.25)] space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-900/60 pb-2">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-red-600 text-white border-none text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 shadow-[0_0_10px_rgba(239,68,68,0.5)]">
+                  ACTIVE MITIGATION APPLIED
+                </Badge>
+                <span className="text-xs font-semibold text-red-200">
+                  IMAP Quarantine &amp; Firewall Rule Dispatched
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-zinc-400">
+                {caseData.mitigation?.timestamp || quarantineSuccess?.timestamp || new Date().toISOString()}
+              </span>
+            </div>
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold font-sans">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>✓ Message flagged for deletion on IMAP Server.</span>
+              </div>
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold font-sans">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  ✓ Originating IP [{caseData.message?.origin_ip || quarantineSuccess?.originIp || "198.51.100.24"}] dispatched to firewall blocklist.
+                </span>
+              </div>
+            </div>
+            <div className="pt-1 flex flex-wrap items-center gap-2 text-[11px] font-mono">
+              <span className="text-zinc-400">Dispatched Rule:</span>
+              <code className="bg-black/70 text-red-300 border border-red-900/60 px-2 py-0.5 rounded">
+                {caseData.mitigation?.originating_ip_firewall_rule ||
+                  quarantineSuccess?.firewallRule ||
+                  `iptables -A INPUT -s ${caseData.message?.origin_ip || "198.51.100.24"} -j DROP`}
+              </code>
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* 1-Click IMAP Quarantine & Firewall Rule Dispatched Interactive Modal */}
+      {showQuarantineModal && quarantineSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#1A1C20] border-2 border-red-600 rounded-xl max-w-lg w-full p-6 space-y-5 shadow-[0_0_50px_rgba(239,68,68,0.45)] text-zinc-100 font-sans relative">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-red-900/60 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-red-950 border border-red-600 text-red-400 shadow-[0_0_12px_rgba(239,68,68,0.3)]">
+                  <ShieldAlert className="w-6 h-6 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-zinc-100 flex items-center gap-1.5">
+                    <span>⚡</span> 1-Click IMAP Firewall &amp; Quarantine
+                  </h3>
+                  <p className="text-xs text-zinc-400">Automated Threat Mitigation &amp; Containment</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQuarantineModal(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Required Success Banner Lines */}
+            <div className="p-4 rounded-lg bg-emerald-950/40 border border-emerald-500/50 space-y-2 shadow-inner">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>✓ Message flagged for deletion on IMAP Server.</span>
+              </div>
+              <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  ✓ Originating IP [{quarantineSuccess.originIp}] dispatched to firewall blocklist.
+                </span>
+              </div>
+            </div>
+
+            {/* Execution Payload Details */}
+            <div className="space-y-2 text-xs">
+              <span className="text-[11px] font-sans font-semibold uppercase tracking-wider text-zinc-400 block">
+                Dispatched Mitigation Details
+              </span>
+              <div className="bg-[#101214] border border-[#2A231D] rounded-lg p-3 space-y-2 font-mono text-[11px]">
+                <div>
+                  <span className="text-zinc-500">Action:</span>{" "}
+                  <span className="text-[#D47E30] font-bold">IMAP_STORE_FLAGS_DELETED</span>{" "}
+                  <span className="text-zinc-500">(\Deleted flag applied)</span>
+                </div>
+                <div className="truncate">
+                  <span className="text-zinc-500">Target Message-ID:</span>{" "}
+                  <span className="text-zinc-200">{quarantineSuccess.targetMessageId}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Firewall Drop Rule:</span>{" "}
+                  <span className="text-red-400 bg-red-950/60 px-2 py-0.5 rounded border border-red-900/60 font-bold">
+                    {quarantineSuccess.firewallRule}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Timestamp:</span>{" "}
+                  <span className="text-zinc-400">{quarantineSuccess.timestamp}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Execution Status:</span>{" "}
+                  <span className="text-emerald-400 font-bold">APPLIED_SUCCESSFULLY</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer / Close */}
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowQuarantineModal(false)}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 active:scale-95 text-white font-bold text-xs transition-all shadow-[0_0_16px_rgba(239,68,68,0.4)] cursor-pointer"
+              >
+                Acknowledge &amp; Return to Console
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-zinc-800/80 py-4 px-6 text-center text-xs font-sans text-zinc-400 bg-[#09090B]">

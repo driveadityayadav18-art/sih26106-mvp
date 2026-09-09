@@ -66,7 +66,11 @@
         "with_protocol": "ESMTPS",
         "timestamp": "2026-08-25T08:00:02+00:00",
         "parse_status": "parsed",
-        "trust": "unknown"
+        "trust": "unknown",
+        "is_tor": false,
+        "is_proxy": false,
+        "anonymizer_type": "None",
+        "confidence_score": 0.0
       }
     ],
     "earliest_reliable_observable": "Received hop 1",

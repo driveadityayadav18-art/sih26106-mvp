@@ -8,6 +8,7 @@ from ..config import (
     SUSPICIOUS_URL_PATH_SCORE, SHORTENED_URL_SCORE, SUSPICIOUS_ATTACHMENT_SCORE,
     EXTERNAL_URL_MISMATCH_SCORE, TRUSTED_URL_DOMAINS,
     OBFUSCATED_URL_SCORE, TRAMPOLINE_REDIRECT_SCORE,
+    URL_ML_PHISHING_SCORE,
     PAYMENT_ACTIONS, PAYMENT_ITEMS,
 )
 from .content import check_credential_request, check_sensitive_data_request, _check_request
@@ -236,4 +237,39 @@ def check_obfuscated_or_redirect_url(parsed_email):
             }
 
     return None
+
+
+def check_url_ml_risk(parsed_email):
+    """
+    Evaluates extracted URLs using Scikit-Learn Random Forest Classifier (20 lexical/structural features).
+    Flags malicious/phishing URLs with probability >= 0.50.
+    """
+    for index, url in _metadata_items(parsed_email, "urls"):
+        raw_url = getattr(url, "raw", None)
+        if not raw_url or not isinstance(raw_url, str):
+            continue
+        host = _url_host(url)
+        if host and (host.endswith(".example") or host.endswith(".test")):
+            continue
+        try:
+            from backend.detectors.url_ml import predict_url_risk
+            res = predict_url_risk(raw_url)
+            prob = res.get("phishing_probability", 0.0)
+            if res.get("is_malicious") or prob >= 0.50:
+                top_factors = res.get("top_risk_factors", [])
+                factor_str = f" Key signals: {'; '.join(top_factors[:2])}." if top_factors else ""
+                display_target = host or raw_url
+                return {
+                    "code": "ML_PHISHING_URL_DETECTED",
+                    "message": (
+                        f"Scikit-Learn Random Forest URL Classifier flagged high phishing risk "
+                        f"({int(prob * 100)}% probability) for '{display_target}'.{factor_str}"
+                    ),
+                    "evidence_path": f"message.urls[{index}].raw",
+                    "weight": URL_ML_PHISHING_SCORE,
+                }
+        except Exception:
+            continue
+    return None
+
 

@@ -48,7 +48,11 @@
         "with_protocol": null,
         "timestamp": null,
         "parse_status": "parsed",
-        "trust": "unknown"
+        "trust": "unknown",
+        "is_tor": false,
+        "is_proxy": false,
+        "anonymizer_type": "None",
+        "confidence_score": 0.0
       },
       {
         "index": 2,
@@ -60,7 +64,11 @@
         "with_protocol": null,
         "timestamp": null,
         "parse_status": "unparsed",
-        "trust": "unknown"
+        "trust": "unknown",
+        "is_tor": false,
+        "is_proxy": false,
+        "anonymizer_type": "None",
+        "confidence_score": 0.0
       }
     ],
     "earliest_reliable_observable": "Received hop 1",

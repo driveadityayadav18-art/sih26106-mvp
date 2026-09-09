@@ -110,23 +110,38 @@ export function Navbar({
         {/* Backend Status Pill — real health check */}
         <BackendStatusPill apiBaseUrl={apiBaseUrl} formattedHost={formattedHost} />
 
-        {/* Download Forensic Report Button */}
+        {/* Download Forensic Report Group */}
         {activeCaseId && (
-          <button
-            onClick={() => {
-              window.open(
-                `${apiBaseUrl}/api/v1/cases/${encodeURIComponent(activeCaseId)}/report?format=html`,
-                "_blank",
-                "noopener,noreferrer"
-              );
-            }}
-            className="h-9 px-3.5 rounded-lg bg-[#141416] hover:bg-[#2A2118] border border-[#D47E30]/50 hover:border-[#D47E30] text-xs font-sans font-semibold text-[#FDFBD4] hover:text-white transition-all duration-150 flex items-center gap-1.5 cursor-pointer shadow-xs"
-            title="Download Forensic Report (HTML)"
-          >
-            <Download className="w-3.5 h-3.5 text-[#D47E30]" />
-            <span className="hidden sm:inline">Download Forensic Report</span>
-            <span className="sm:hidden">Report</span>
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={() => {
+                window.open(
+                  `${apiBaseUrl}/api/v1/cases/${encodeURIComponent(activeCaseId)}/report?format=html`,
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+              }}
+              className="h-9 px-3 rounded-l-lg bg-[#141416] hover:bg-[#2A2118] border border-[#D47E30]/50 hover:border-[#D47E30] text-xs font-sans font-semibold text-[#FDFBD4] hover:text-white transition-all duration-150 flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Download/Open Forensic Report (HTML / Printable PDF)"
+            >
+              <Download className="w-3.5 h-3.5 text-[#D47E30]" />
+              <span className="hidden sm:inline">Download Forensic Report</span>
+              <span className="sm:hidden">Report</span>
+            </button>
+            <button
+              onClick={() => {
+                window.open(
+                  `${apiBaseUrl}/api/v1/cases/${encodeURIComponent(activeCaseId)}/report?format=json`,
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+              }}
+              className="h-9 px-2.5 rounded-r-lg bg-[#141416] hover:bg-[#2A2118] border-y border-r border-[#D47E30]/50 hover:border-[#D47E30] text-xs font-mono font-bold text-[#D47E30] hover:text-white transition-all duration-150 flex items-center cursor-pointer shadow-xs"
+              title="Download Forensic Report (JSON)"
+            >
+              JSON
+            </button>
+          </div>
         )}
 
         {/* Primary Action Button */}

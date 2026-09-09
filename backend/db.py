@@ -33,10 +33,16 @@ def init_db(db_path: Optional[str] = None) -> None:
                     created_at TEXT,
                     risk_score INTEGER,
                     risk_band TEXT,
+                    status TEXT DEFAULT 'ACTIVE',
                     analysis_json TEXT
                 )
                 """
             )
+            # Ensure status column exists if database table pre-dates this column
+            cursor.execute("PRAGMA table_info(cases)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "status" not in columns:
+                cursor.execute("ALTER TABLE cases ADD COLUMN status TEXT DEFAULT 'ACTIVE'")
     finally:
         conn.close()
 
@@ -73,10 +79,12 @@ def save_case(case_dict: Dict[str, Any], db_path: Optional[str] = None) -> None:
         risk_score = 0
 
     risk_band = str(case_dict.get("risk_band") or risk.get("band") or "UNKNOWN")
+    case_status = str(case_dict.get("status") or "ACTIVE")
 
-    # Persist created_at into case_dict if missing
+    # Persist created_at and status into case_dict if missing
     if "created_at" not in case_dict:
         case_dict["created_at"] = created_at
+    case_dict["status"] = case_status
 
     analysis_json = json.dumps(case_dict)
 
@@ -86,10 +94,10 @@ def save_case(case_dict: Dict[str, Any], db_path: Optional[str] = None) -> None:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO cases (case_id, sha256, created_at, risk_score, risk_band, analysis_json)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO cases (case_id, sha256, created_at, risk_score, risk_band, status, analysis_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (case_id, sha256, created_at, risk_score, risk_band, analysis_json),
+                (case_id, sha256, created_at, risk_score, risk_band, case_status, analysis_json),
             )
     finally:
         conn.close()
@@ -117,8 +125,29 @@ def get_case(case_id: str, db_path: Optional[str] = None) -> Optional[Dict[str, 
         conn.close()
 
 
+def quarantine_case(
+    case_id: str,
+    mitigation_log: Dict[str, Any],
+    db_path: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Updates case status to QUARANTINED and records the mitigation action log.
+    Returns the updated case dictionary or None if not found.
+    """
+    target_path = db_path or get_db_path()
+    case = get_case(case_id, target_path)
+    if not case:
+        return None
+
+    case["status"] = "QUARANTINED"
+    case["mitigation"] = mitigation_log
+    case["mitigation_log"] = mitigation_log
+    save_case(case, target_path)
+    return case
+
+
 def list_cases(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Returns id, created_at, risk_score, risk_band for all cases (not the full JSON)."""
+    """Returns id, created_at, risk_score, risk_band, status for all cases (not the full JSON)."""
     target_path = db_path or get_db_path()
     init_db(target_path)
     conn = sqlite3.connect(target_path)
@@ -126,7 +155,7 @@ def list_cases(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT case_id, created_at, risk_score, risk_band
+            SELECT case_id, created_at, risk_score, risk_band, status
             FROM cases
             ORDER BY created_at DESC
             """
@@ -139,6 +168,7 @@ def list_cases(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
                 "created_at": row[1],
                 "risk_score": row[2],
                 "risk_band": row[3],
+                "status": row[4] or "ACTIVE",
             }
             for row in rows
         ]

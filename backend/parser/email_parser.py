@@ -18,6 +18,13 @@ from .models import (
     Warning,
 )
 from ..evidence.hashing import calculate_sha256, get_byte_length
+try:
+    from backend.services.geo_ip import detect_anonymizer
+except ImportError:
+    try:
+        from services.geo_ip import detect_anonymizer
+    except ImportError:
+        from ..services.geo_ip import detect_anonymizer
 
 
 class _SafeHTMLTextExtractor(HTMLParser):
@@ -634,6 +641,20 @@ class EmailParser:
                 return hop
 
             hop.parse_status = "parsed"
+
+            # -------------------------------------------------
+            # Anonymizer & Proxy Detection (Tor / VPN / Hosting)
+            # -------------------------------------------------
+            target_ip = hop.from_ip or hop.by_ip
+            if target_ip:
+                try:
+                    anon = detect_anonymizer(target_ip)
+                    hop.is_tor = bool(anon.get("is_tor", False))
+                    hop.is_proxy = bool(anon.get("is_proxy", False))
+                    hop.anonymizer_type = str(anon.get("anonymizer_type", "None"))
+                    hop.confidence_score = float(anon.get("confidence_score", 0.0))
+                except Exception:
+                    pass
 
             # -------------------------------------------------
             # Check observed IP addresses

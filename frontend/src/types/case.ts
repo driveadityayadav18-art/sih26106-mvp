@@ -14,6 +14,10 @@ export interface ReceivedHop {
   timestamp?: string | null;
   parse_status?: string;
   trust?: string;
+  is_tor?: boolean;
+  is_proxy?: boolean;
+  anonymizer_type?: string | null;
+  confidence_score?: number | null;
 }
 
 export type TraceHop = ReceivedHop;
@@ -28,6 +32,8 @@ export interface MessageData {
   from?: FromAddress | null;
   reply_to?: string | null;
   return_path?: string | null;
+  message_id?: string | null;
+  origin_ip?: string | null;
   subject?: string | null;
   urls?: string[];
   spf?: string | null;
@@ -109,22 +115,45 @@ export interface ArtifactData {
   is_demo_data?: boolean;
 }
 
+export interface PrivacyAuditData {
+  pii_sanitized?: boolean;
+  masked_entities_count?: number;
+  cards_redacted?: number;
+  phones_redacted?: number;
+  emails_redacted?: number;
+  aadhaar_redacted?: number;
+  pii_detected?: boolean;
+}
+
 export interface AIReviewData {
   is_false_positive?: boolean;
   adjusted_score?: number;
   adjusted_band?: "LOW" | "REVIEW" | "HIGH" | string;
   analyst_summary?: string;
   error?: string;
+  privacy_audit?: PrivacyAuditData;
+}
+
+export interface MitigationLog {
+  action: string;
+  target_message_id: string;
+  originating_ip_firewall_rule: string;
+  timestamp: string;
+  status: string;
 }
 
 export interface CaseAnalysis {
   case_id: string;
+  status?: "ACTIVE" | "QUARANTINED" | string;
   artifact?: ArtifactData;
   message?: MessageData;
   risk: RiskData;
   ai_review?: AIReviewData | null;
+  privacy_audit?: PrivacyAuditData;
   infrastructure?: InfrastructureData;
   campaign?: CampaignData;
   trace?: TraceData;
+  mitigation?: MitigationLog;
+  mitigation_log?: MitigationLog;
 }
 
